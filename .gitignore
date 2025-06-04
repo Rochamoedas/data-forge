@@ -70,3 +70,4 @@ external/*.json
 docs/development_plan.md
 docs/sprint_1.md
 docs/sprint_2.md
+.python-version
