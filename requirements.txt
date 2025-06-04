@@ -1,7 +1,4 @@
-pandas
-polars
-duckdb
-pyarrow
-pydantic
-fastapi
-uvicorn
+click==8.2.1
+colorama==0.4.6
+h11==0.16.0
+uvicorn==0.34.3
