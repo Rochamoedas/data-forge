@@ -1,6 +1,7 @@
 # app/infrastructure/persistence/duckdb/schema_manager.py
 from app.domain.entities.schema import Schema, SchemaField
 from app.infrastructure.persistence.duckdb.connection import DuckDBConnection
+from app.config.logging_config import logger
 from textwrap import dedent
 
 class DuckDBSchemaManager:
@@ -54,7 +55,7 @@ class DuckDBSchemaManager:
 
         try:
             conn.execute(create_table_sql)
-            print(f"Table '{schema.name}' ensured/created successfully.")
+            logger.info(f"Table '{schema.name}' ensured/created successfully.")
         except Exception as e:
-            print(f"Error ensuring table '{schema.name}': {e}")
+            logger.error(f"Error ensuring table '{schema.name}': {e}")
             raise # Re-raise the exception to propagate it
