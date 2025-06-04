@@ -1,0 +1,1 @@
+# app/infrastructure/metadata/__init__.py

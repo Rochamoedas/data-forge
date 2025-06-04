@@ -1,0 +1,7 @@
+pandas
+polars
+duckdb
+pyarrow
+pydantic
+fastapi
+uvicorn
