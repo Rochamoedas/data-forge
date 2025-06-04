@@ -67,3 +67,6 @@ test_venv/
 frontend/front_dev_plan.md
 jobs.json
 external/*.json
+docs/development_plan.md
+docs/sprint_1.md
+docs/sprint_2.md
