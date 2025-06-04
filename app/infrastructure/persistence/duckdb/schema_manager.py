@@ -1,6 +1,7 @@
 # app/infrastructure/persistence/duckdb/schema_manager.py
 from app.domain.entities.schema import Schema, SchemaField
 from app.infrastructure.persistence.duckdb.connection import DuckDBConnection
+from textwrap import dedent
 
 class DuckDBSchemaManager:
     """
@@ -45,11 +46,11 @@ class DuckDBSchemaManager:
         # Join column definitions to form the SQL statement
         columns_sql = ", ".join(column_defs)
 
-        create_table_sql = f"""
+        create_table_sql = dedent(f"""
         CREATE TABLE IF NOT EXISTS {schema.name} (
             {columns_sql}
         );
-        """
+        """)
 
         try:
             conn.execute(create_table_sql)

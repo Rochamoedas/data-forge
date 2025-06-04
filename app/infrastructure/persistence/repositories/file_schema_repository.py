@@ -12,7 +12,7 @@ class FileSchemaRepository(ISchemaRepository):
     This simplifies early development while maintaining the repository pattern.
     """
     
-    def get_by_name(self, name: str) -> Optional[Schema]:
+    def get_schema_by_name(self, name: str) -> Optional[Schema]:
         """Get a schema by its name."""
         try:
             return get_schema_by_name(name)

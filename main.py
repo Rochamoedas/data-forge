@@ -1,5 +1,5 @@
 def main():
-    print("Hello from react-fast-v12!")
+    print("Hello from Data Forge!")
 
 
 if __name__ == "__main__":
