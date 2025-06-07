@@ -67,3 +67,16 @@ test_venv/
 frontend/front_dev_plan.md
 jobs.json
 external/*.json
+docs/development_plan.md
+docs/sprint_1.md
+docs/sprint_2.md
+.python-version
+
+# Docs
+docs/sprint_1_review.md
+docs/ai_developer.md
+docs/sprint_2_planning.md
+docs/copilot_define_implementation_steps_sprint_2_b.md
+docs/cursor_define_implementation_steps_sprint_2_b.md
+docs/sprint_2_planning_b.md
+docs/sprint_3_B.md
