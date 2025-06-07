@@ -8,7 +8,7 @@ This document presents an overview of the architecture, design principles, and s
 
 ### Overview and Purpose
 
-Our goal is to build a **flexible and scalable data platform** that supports ingestion and querying across dozens of different datasets. The key concept is **genericity**: instead of creating a specific API and database schema for each data type (users, products, sales, etc.), the platform will be **schema-driven**. This means the structure of each "table" will be defined by metadata (the schema), and the application will dynamically adapt to that definition to perform read/write operations.
+Our goal is to build a **flexible and scalable data platform** that supports ingestion and querying across different datasets. The key concept is **genericity**: instead of creating a specific API and database schema for each data type (users, products, sales, etc.), the platform will be **schema-driven**. This means the structure of each "table" will be defined by metadata (the schema), and the application will dynamically adapt to that definition to perform read/write operations.
 
 ---
 
@@ -16,7 +16,7 @@ Our goal is to build a **flexible and scalable data platform** that supports ing
 
 1.  **FastAPI as Web Framework:** Chosen for its high performance, ease of use, strong typing (via Pydantic), automatic documentation (Swagger/OpenAPI), and asynchronous support—ideal for efficient I/O operations.
 2.  **DuckDB as Database:** For the MVP, we use DuckDB due to its embeddable nature, strong analytical performance for tabular data, and flexibility in handling dynamic schemas (creating tables "on-the-fly" or using "schema-on-read"). This simplifies early persistence management.
-3.  **Schemas Defined in File:** For the MVP, schema definitions will be stored in local Python files (e.g., `schemas_description.py`). This reduces complexity during early development by avoiding the need for a schema management API, accelerating delivery. Database-based or external schema management will be considered in later phases.
+3.  **Schemas Defined in File:** For the MVP, schema definitions will be stored in local Python files (e.g., `schemas_description.py`). This reduces complexity during early development by avoiding the need for a schema management API, accelerating delivery. Complex schema management and the us of AI to auto-improve the project will be considered in another phase, not in the MVP.
 4.  **Focus on Genericity and DRY (Don't Repeat Yourself):** The architecture is designed so that adding a new dataset (a new "table") requires **minimal coding effort**. Data handling logic is generic, driven by schema definitions rather than hardcoded data types.
 5.  **Code Quality and Maintainability:** From the beginning, the project is structured to support collaboration, code clarity, and future evolution.
 
@@ -69,10 +69,11 @@ The project architecture is built around the following principles and patterns:
     * With the `Schema` in hand, the use case invokes `IDataRepository` (implemented by `DuckDBDataRepository`) to store the new data record.
     * `DuckDBDataRepository` uses the schema to dynamically build the SQL INSERT query and persist the data in DuckDB.
     * The use case returns a `DataRecord` (domain entity), which is mapped to a `DataRecordResponse` (DTO) and returned to the client by FastAPI.
+	* Focus on performance and reliability.
 
 ---
 
-## 1. Folder Tree (MVP Version)
+## 1. Folder Tree (Main layers for th eMVP Version)
 
 This is the directory structure that will guide development, reflecting hexagonal architecture and clear separation of responsibilities.
 
