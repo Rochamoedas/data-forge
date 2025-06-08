@@ -1,32 +1,25 @@
 # app/infrastructure/persistence/repositories/file_schema_repository.py
-from typing import List, Optional
+from typing import Optional, List, Dict
 from app.domain.entities.schema import Schema
 from app.domain.repositories.schema_repository import ISchemaRepository
-from app.infrastructure.metadata.schemas_description import ALL_SCHEMAS, get_schema_by_name, list_available_schemas
+from app.infrastructure.metadata.schemas_description import SCHEMAS_METADATA
+from app.infrastructure.persistence.duckdb.schema_manager import DuckDBSchemaManager
+from app.config.logging_config import logger
 
 class FileSchemaRepository(ISchemaRepository):
-    """
-    A file-based implementation of ISchemaRepository.
+    def __init__(self, schema_manager: DuckDBSchemaManager):
+        self._schemas: Dict[str, Schema] = {}
+        self.schema_manager = schema_manager
 
-    For the MVP, schemas are defined in Python files rather than stored in a database.
-    This simplifies early development while maintaining the repository pattern.
-    """
-    
-    def get_schema_by_name(self, name: str) -> Optional[Schema]:
-        """Get a schema by its name."""
-        try:
-            return get_schema_by_name(name)
-        except ValueError:
-            return None
-    
-    def get_all(self) -> List[Schema]:
-        """Get all available schemas."""
-        return list(ALL_SCHEMAS.values())
-    
-    def list_schema_names(self) -> List[str]:
-        """Get a list of all available schema names."""
-        return list_available_schemas()
-    
-    def schema_exists(self, name: str) -> bool:
-        """Check if a schema exists."""
-        return name in ALL_SCHEMAS
+    async def initialize(self):
+        for schema_data in SCHEMAS_METADATA:
+            schema = Schema(**schema_data)
+            self._schemas[schema.name] = schema
+            await self.schema_manager.ensure_table_exists(schema)
+        logger.info(f"Loaded {len(self._schemas)} schemas and ensured tables in DuckDB.")
+
+    async def get_schema_by_name(self, name: str) -> Optional[Schema]:
+        return self._schemas.get(name)
+
+    async def get_all_schemas(self) -> List[Schema]:
+        return list(self._schemas.values())
