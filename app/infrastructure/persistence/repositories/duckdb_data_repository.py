@@ -19,7 +19,8 @@ class DuckDBDataRepository(IDataRepository):
         record = DataRecord(schema_name=schema.name, data=data)
         columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
         placeholders = ", ".join(["?"] * len(columns))
-        insert_sql = f'INSERT INTO "{schema.table_name}" ({", ".join(f'"{c}"' for c in columns)}) VALUES ({placeholders})'
+        column_names = ", ".join(f'"{c}"' for c in columns)
+        insert_sql = f'INSERT INTO "{schema.table_name}" ({column_names}) VALUES ({placeholders})'
         values = [str(record.id), record.created_at, record.version] + [record.data.get(prop.name) for prop in schema.properties]
 
         async with self.connection_pool.acquire() as conn:
@@ -36,7 +37,8 @@ class DuckDBDataRepository(IDataRepository):
             return
         columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
         placeholders = ", ".join(["?"] * len(columns))
-        insert_sql = f'INSERT INTO "{schema.table_name}" ({", ".join(f'"{c}"' for c in columns)}) VALUES ({placeholders})'
+        column_names = ", ".join(f'"{c}"' for c in columns)
+        insert_sql = f'INSERT INTO "{schema.table_name}" ({column_names}) VALUES ({placeholders})'
         values_to_insert = [(str(record.id), record.created_at, record.version) + tuple(record.data.get(prop.name) for prop in schema.properties) for record in records]
 
         async with self.connection_pool.acquire() as conn:
@@ -88,20 +90,25 @@ class DuckDBDataRepository(IDataRepository):
                 raise
 
     async def stream_query_results(self, schema: Schema, query_request: DataQueryRequest) -> AsyncIterator[DataRecord]:
+        # Use traditional fetchall for streaming as DuckDB streaming can be problematic
         query_builder = DuckDBQueryBuilder(schema)
         query_builder.add_filters(query_request.filters)
         query_builder.add_sorts(query_request.sort)
-        query_builder.add_pagination(query_request.pagination.size, (query_request.pagination.page - 1) * query_request.pagination.size)
-        select_sql = query_builder.build_select_query()
+        
+        # Remove pagination limits for streaming - get all matching records
+        select_sql = query_builder.build_select_query_without_pagination()
         params = query_builder.get_params()
 
         async with self.connection_pool.acquire() as conn:
             try:
-                stream = conn.execute(select_sql, params).fetch_record_stream()
-                description = stream.description
-                for chunk in stream:
-                    for row in chunk.to_pylist():
-                        yield self._map_row_to_data_record(schema, tuple(row.values()), description)
+                result_relation = conn.execute(select_sql, params)
+                rows = result_relation.fetchall()
+                description = result_relation.description
+                
+                # Yield records one by one to create streaming effect
+                for row in rows:
+                    yield self._map_row_to_data_record(schema, row, description)
+                    
             except Exception as e:
                 logger.error(f"Error streaming records from schema {schema.name}: {e}")
                 raise

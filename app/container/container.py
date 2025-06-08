@@ -7,7 +7,13 @@ from app.domain.repositories.schema_repository import ISchemaRepository
 from app.domain.repositories.data_repository import IDataRepository
 from app.infrastructure.persistence.repositories.duckdb_data_repository import DuckDBDataRepository
 from app.application.use_cases.create_data_record import CreateDataRecordUseCase
+from app.application.use_cases.create_bulk_data_records import CreateBulkDataRecordsUseCase
 from app.application.use_cases.get_data_record import GetDataRecordUseCase
+from app.application.use_cases.query_data_records import (
+    QueryDataRecordsUseCase, 
+    StreamDataRecordsUseCase, 
+    CountDataRecordsUseCase
+)
 
 class Container:
     def __init__(self):
@@ -24,7 +30,23 @@ class Container:
             data_repository=self.data_repository,
             schema_repository=self.schema_repository
         )
+        self.create_bulk_data_records_use_case = CreateBulkDataRecordsUseCase(
+            data_repository=self.data_repository,
+            schema_repository=self.schema_repository
+        )
         self.get_data_record_use_case = GetDataRecordUseCase(
+            data_repository=self.data_repository,
+            schema_repository=self.schema_repository
+        )
+        self.query_data_records_use_case = QueryDataRecordsUseCase(
+            data_repository=self.data_repository,
+            schema_repository=self.schema_repository
+        )
+        self.stream_data_records_use_case = StreamDataRecordsUseCase(
+            data_repository=self.data_repository,
+            schema_repository=self.schema_repository
+        )
+        self.count_data_records_use_case = CountDataRecordsUseCase(
             data_repository=self.data_repository,
             schema_repository=self.schema_repository
         )

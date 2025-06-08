@@ -7,7 +7,7 @@ REM Activate the virtual environment
 call .venv\Scripts\activate
 
 REM Run the FastAPI application using uvicorn
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8032
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 REM Optional: Keep the command prompt open after the app exits (e.g., if it crashes)
 pause

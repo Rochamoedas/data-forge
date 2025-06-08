@@ -1,10 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
 
 class BaseEntity(BaseModel):
-    id: UUID = Field(default_factory=UUID)
+    id: UUID = Field(default_factory=uuid4)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     version: int = Field(default=1)
 

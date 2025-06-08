@@ -29,6 +29,7 @@ MANIFEST
 .cursorignore
 
 # Database
+data/data.duckdb
 
 # Downloads (exclude directory but keep it in git)
 downloads/*
@@ -80,3 +81,9 @@ docs/copilot_define_implementation_steps_sprint_2_b.md
 docs/cursor_define_implementation_steps_sprint_2_b.md
 docs/sprint_2_planning_b.md
 docs/sprint_3_B.md
+bug_analysis.md
+docs/cursor_define_implementation_steps_sprint_2_c_1_todo_2.md
+docs/cursor_define_implementation_steps_sprint_2_c_1_todo.md
+docs/cursor_define_implementation_steps_sprint_2_c_1.md
+docs/cursor_define_implementation_steps_sprint_2_c_2.md
+

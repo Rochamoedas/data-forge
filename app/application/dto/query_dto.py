@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any
 from enum import Enum
+from app.config.api_limits import api_limits
 
 class FilterOperator(str, Enum):
     EQ = "eq"
@@ -26,7 +27,11 @@ class QuerySort(BaseModel):
 
 class QueryPagination(BaseModel):
     page: int = Field(1, ge=1)
-    size: int = Field(10, ge=1, le=100)
+    size: int = Field(
+        api_limits.DEFAULT_PAGE_SIZE,
+        ge=api_limits.MIN_PAGE_SIZE,
+        le=api_limits.MAX_PAGE_SIZE
+    )
 
 class DataQueryRequest(BaseModel):
     filters: Optional[List[QueryFilter]] = None
