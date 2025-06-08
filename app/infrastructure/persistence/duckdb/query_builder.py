@@ -55,6 +55,25 @@ class DuckDBQueryBuilder:
             query_parts.append(f"LIMIT {self.limit} OFFSET {self.offset}")
         return " ".join(query_parts)
 
+    def build_select_query_without_pagination(self) -> str:
+        """Build select query without pagination for streaming"""
+        query_parts = [f"SELECT * FROM {self.schema.table_name}"]
+        if self.filters:
+            where_conditions = []
+            for filter_item in self.filters:
+                condition, param = self._build_filter_condition(filter_item)
+                where_conditions.append(condition)
+                if param is not None:
+                    if isinstance(param, (list, tuple)):
+                        self.params.extend(param)
+                    else:
+                        self.params.append(param)
+            query_parts.append(f"WHERE {' AND '.join(where_conditions)}")
+        if self.sort_by:
+            sort_conditions = [f"{s.field} {s.order.upper()}" for s in self.sort_by]
+            query_parts.append(f"ORDER BY {', '.join(sort_conditions)}")
+        return " ".join(query_parts)
+
     def build_count_query(self) -> str:
         query_parts = [f"SELECT COUNT(*) FROM {self.schema.table_name}"]
         if self.filters:

@@ -25,7 +25,7 @@ from app.application.dto.query_dto import (
     FilterOperator
 )
 from app.container.container import container
-from app.domain.exceptions import SchemaNotFoundException, InvalidDataException
+from app.domain.exceptions import SchemaNotFoundException, InvalidDataException, RecordNotFoundException
 from app.config.logging_config import logger
 
 router = APIRouter()
@@ -222,20 +222,28 @@ async def stream_records_by_schema(
         )
         
         async def generate_stream():
-            record_count = 0
-            async for record in container.stream_data_records_use_case.execute(schema_name, query_request):
-                if limit and record_count >= limit:
-                    break
-                
-                record_data = {
-                    "id": str(record.id),
-                    "schema_name": record.schema_name,
-                    "data": record.data,
-                    "created_at": record.created_at.isoformat(),
-                    "version": record.version
-                }
-                yield json.dumps(record_data) + "\n"
-                record_count += 1
+            try:
+                record_count = 0
+                async for record in container.stream_data_records_use_case.execute(schema_name, query_request):
+                    if limit and record_count >= limit:
+                        break
+                    
+                    record_data = {
+                        "id": str(record.id),
+                        "schema_name": record.schema_name,
+                        "data": record.data,
+                        "created_at": record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at),
+                        "version": record.version
+                    }
+                    yield json.dumps(record_data, default=str) + "\n"
+                    record_count += 1
+                # Ensure proper stream ending
+                logger.info(f"Stream completed for {schema_name}, {record_count} records streamed")
+            except Exception as e:
+                logger.error(f"Error in stream generator: {e}")
+                # Yield error as final message
+                error_data = {"error": str(e), "schema_name": schema_name}
+                yield json.dumps(error_data, default=str) + "\n"
         
         return StreamingResponse(
             generate_stream(),
@@ -320,6 +328,9 @@ async def get_record_by_id(schema_name: str, record_id: UUID) -> DataRecordRespo
         )
     except SchemaNotFoundException as e:
         logger.error(f"Schema not found: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except RecordNotFoundException as e:
+        logger.error(f"Record not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error retrieving record: {e}")
