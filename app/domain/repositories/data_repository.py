@@ -1,28 +1,33 @@
 # app/domain/repositories/data_repository.py
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, AsyncIterator
 from uuid import UUID
-from app.domain.entities.schema import Schema
 from app.domain.entities.data_record import DataRecord
+from app.domain.entities.schema import Schema
+from app.application.dto.query_dto import DataQueryRequest
+from app.application.dto.data_dto import PaginatedResponse
 
 class IDataRepository(ABC):
-    """
-    Abstract Base Class (ABC) defining the contract for generic data operations.
-    This is a 'Port' in Hexagonal Architecture.
-    """
     @abstractmethod
-    def create(self, schema: Schema, data: Dict[str, Any]) -> DataRecord:
-        """
-        Creates a new data record for a given schema.
-        The 'data' dictionary must conform to the schema's fields.
-        """
+    async def create(self, schema: Schema, data: Dict[str, Any]) -> DataRecord:
         pass
 
     @abstractmethod
-    def get_by_id(self, schema: Schema, record_id: UUID) -> Optional[DataRecord]:
-        """
-        Retrieves a single data record by its ID for a given schema.
-        Returns None if the record is not found.
-        """
+    async def create_batch(self, schema: Schema, records: List[DataRecord]) -> None:
         pass
-    # Future: Add update and delete methods here in Sprint 2
+
+    @abstractmethod
+    async def get_by_id(self, schema: Schema, record_id: UUID) -> Optional[DataRecord]:
+        pass
+
+    @abstractmethod
+    async def get_all(self, schema: Schema, query_request: DataQueryRequest) -> PaginatedResponse[DataRecord]:
+        pass
+
+    @abstractmethod
+    async def stream_query_results(self, schema: Schema, query_request: DataQueryRequest) -> AsyncIterator[DataRecord]:
+        pass
+
+    @abstractmethod
+    async def count_all(self, schema: Schema, query_request: DataQueryRequest) -> int:
+        pass

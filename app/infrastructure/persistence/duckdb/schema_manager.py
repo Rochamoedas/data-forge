@@ -1,61 +1,30 @@
 # app/infrastructure/persistence/duckdb/schema_manager.py
-from app.domain.entities.schema import Schema, SchemaField
-from app.infrastructure.persistence.duckdb.connection import DuckDBConnection
+import duckdb
+from app.domain.entities.schema import Schema
+from app.infrastructure.persistence.duckdb.connection_pool import AsyncDuckDBPool
 from app.config.logging_config import logger
-from textwrap import dedent
 
 class DuckDBSchemaManager:
-    """
-    Manages the creation and verification of database tables in DuckDB
-    based on defined Schema entities.
-    """
-    def __init__(self, db_connection: DuckDBConnection):
-        self.db_connection = db_connection
+    def __init__(self, connection_pool: AsyncDuckDBPool):
+        self.connection_pool = connection_pool
 
-    def _map_field_type_to_duckdb(self, field_type: str) -> str:
-        """Maps our generic field types to DuckDB specific types."""
-        type_map = {
-            "STRING": "VARCHAR",
-            "INTEGER": "BIGINT", # Use BIGINT for more flexibility
-            "BOOLEAN": "BOOLEAN",
-            "DOUBLE": "DOUBLE",
-            "TIMESTAMP": "TIMESTAMP",
-            "UUID": "UUID", # DuckDB supports UUID
-            # Add more mappings as needed
-        }
-        return type_map.get(field_type.upper(), "VARCHAR") # Default to VARCHAR
-
-    def ensure_table_exists(self, schema: Schema):
-        """
-        Ensures that a table corresponding to the given schema exists in DuckDB.
-        Creates it if it doesn't exist.
-        """
-        conn = self.db_connection.get_connection()
-
-        # Build column definitions for the CREATE TABLE statement
-        column_defs = []
-        # Always add a primary key 'id' column for DataRecord
-        column_defs.append("id UUID PRIMARY KEY") # We'll manage UUID generation from DataRecord
-
-        for field in schema.fields:
-            # Skip 'id' field if it's already added as primary key
-            if field.name.lower() == 'id' and field.type.upper() == 'UUID':
-                continue
-            duckdb_type = self._map_field_type_to_duckdb(field.type)
-            column_defs.append(f"{field.name} {duckdb_type}")
-
-        # Join column definitions to form the SQL statement
-        columns_sql = ", ".join(column_defs)
-
-        create_table_sql = dedent(f"""
-        CREATE TABLE IF NOT EXISTS {schema.name} (
-            {columns_sql}
+    async def ensure_table_exists(self, schema: Schema):
+        column_defs = ", ".join([f'"{prop.name}" {prop.db_type}' for prop in schema.properties])
+        create_table_sql = f"""
+        CREATE TABLE IF NOT EXISTS "{schema.table_name}" (
+            id VARCHAR PRIMARY KEY,
+            created_at TIMESTAMP,
+            version INTEGER,
+            {column_defs}
         );
-        """)
-
-        try:
-            conn.execute(create_table_sql)
-            logger.info(f"Table '{schema.name}' ensured/created successfully.")
-        except Exception as e:
-            logger.error(f"Error ensuring table '{schema.name}': {e}")
-            raise # Re-raise the exception to propagate it
+        """
+        async with self.connection_pool.acquire() as conn:
+            try:
+                conn.execute(create_table_sql)
+                logger.info(f"Ensured table '{schema.table_name}' exists in DuckDB.")
+                conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_{schema.table_name}_id" ON "{schema.table_name}"(id);')
+                conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_{schema.table_name}_created_at" ON "{schema.table_name}"(created_at);')
+                logger.info(f"Ensured indexes on '{schema.table_name}' for 'id' and 'created_at'.")
+            except Exception as e:
+                logger.error(f"Error ensuring table '{schema.table_name}' exists: {e}")
+                raise

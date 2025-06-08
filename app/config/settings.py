@@ -1,14 +1,18 @@
 # app/config/settings.py
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
-class Settings(BaseSettings):
-    """
-    Application settings loaded from environment variables or a .env file.
-    """
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+class Settings:
+    PROJECT_NAME: str = "Data Forge"
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    DATABASE_PATH: str = os.getenv("DATABASE_PATH", "./data/data.duckdb")
 
-    APP_NAME: str = "Data Forge - Dynamic Data Platform"
-    DEBUG_MODE: bool = True
-    DUCKDB_PATH: str = "data/database.duckdb" # Path to our DuckDB file
+    DUCKDB_PERFORMANCE_CONFIG = {
+        'memory_limit': '4GB',           # Optimized for local use
+        'threads': 'auto',               # Use available cores
+        'enable_object_cache': True,
+        'temp_directory': '/tmp/duckdb', # SSD-based temp storage
+        'checkpoint_threshold': '1GB',   # For write-heavy workloads
+        'wal_autocheckpoint': 1000,      # WAL management
+    }
 
 settings = Settings()
