@@ -36,6 +36,8 @@ class DuckDBQueryBuilder:
         return self
 
     def build_select_query(self) -> str:
+        # Reset params to avoid accumulation
+        self.params = []
         query_parts = [f"SELECT * FROM {self.schema.table_name}"]
         if self.filters:
             where_conditions = []
@@ -57,6 +59,8 @@ class DuckDBQueryBuilder:
 
     def build_select_query_without_pagination(self) -> str:
         """Build select query without pagination for streaming"""
+        # Reset params to avoid accumulation
+        self.params = []
         query_parts = [f"SELECT * FROM {self.schema.table_name}"]
         if self.filters:
             where_conditions = []
@@ -75,6 +79,8 @@ class DuckDBQueryBuilder:
         return " ".join(query_parts)
 
     def build_count_query(self) -> str:
+        # Reset params to avoid accumulation
+        self.params = []
         query_parts = [f"SELECT COUNT(*) FROM {self.schema.table_name}"]
         if self.filters:
             where_conditions = []

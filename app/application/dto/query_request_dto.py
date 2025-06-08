@@ -32,14 +32,14 @@ class QueryDataRecordsRequest(BaseModel):
     filters: Optional[List[QueryRequestFilter]] = Field(
         None,
         description="List of filters to apply",
-        max_items=api_limits.MAX_FILTER_CONDITIONS
+        max_length=api_limits.MAX_FILTER_CONDITIONS
     )
     
     # Sorting
     sort: Optional[List[QueryRequestSort]] = Field(
         None,
         description="List of sort specifications",
-        max_items=api_limits.MAX_SORT_FIELDS
+        max_length=api_limits.MAX_SORT_FIELDS
     )
     
     # Full-text search (optional)
@@ -53,14 +53,14 @@ class StreamDataRecordsRequest(BaseModel):
     filters: Optional[List[QueryRequestFilter]] = Field(
         None,
         description="List of filters to apply",
-        max_items=api_limits.MAX_FILTER_CONDITIONS
+        max_length=api_limits.MAX_FILTER_CONDITIONS
     )
     
     # Sorting
     sort: Optional[List[QueryRequestSort]] = Field(
         None,
         description="List of sort specifications",
-        max_items=api_limits.MAX_SORT_FIELDS
+        max_length=api_limits.MAX_SORT_FIELDS
     )
     
     # Limit for streaming (optional safety)
@@ -79,7 +79,7 @@ class CountDataRecordsRequest(BaseModel):
     filters: Optional[List[QueryRequestFilter]] = Field(
         None,
         description="List of filters to apply",
-        max_items=api_limits.MAX_FILTER_CONDITIONS
+        max_length=api_limits.MAX_FILTER_CONDITIONS
     )
 
 # Response DTOs

@@ -1,29 +1,35 @@
 from pydantic import BaseModel
 
 class APILimits(BaseModel):
-    """Configuration for API limits and constraints"""
+    """Configuration for API limits and constraints - Optimized for PERFORMANCE TESTING"""
     
-    # Pagination limits
-    DEFAULT_PAGE_SIZE: int = 999
-    MAX_PAGE_SIZE: int = 10000
+    # Pagination limits - Optimized for high-performance testing
+    DEFAULT_PAGE_SIZE: int = 1000       # Reasonable default for performance tests
+    MAX_PAGE_SIZE: int = 100000         # Allow very large pages for performance testing
     MIN_PAGE_SIZE: int = 1
     
-    # Stream limits
-    DEFAULT_STREAM_LIMIT: int = 10000
-    MAX_STREAM_LIMIT: int = 100001
+    # Stream limits - Optimized for 100K+ record performance tests
+    DEFAULT_STREAM_LIMIT: int = 50000   # Good default for streaming
+    MAX_STREAM_LIMIT: int = 1000000     # Allow up to 1M records for stress testing
     MIN_STREAM_LIMIT: int = 1
     
-    # Bulk operation limits
-    MAX_BULK_RECORDS: int = 100001
+    # Bulk operation limits - Aligned with performance test requirements
+    MAX_BULK_RECORDS: int = 500000      # Allow up to 500K records in single bulk operation
     MIN_BULK_RECORDS: int = 1
+    DEFAULT_BULK_BATCH_SIZE: int = 20000 # Match performance test batch size
     
-    # Query limits
-    MAX_FILTER_CONDITIONS: int = 50
-    MAX_SORT_FIELDS: int = 10
+    # Query limits - Relaxed for complex performance testing
+    MAX_FILTER_CONDITIONS: int = 100    # Support complex filtering scenarios
+    MAX_SORT_FIELDS: int = 20           # Support multi-field sorting
     
-    # Performance limits
-    QUERY_TIMEOUT_SECONDS: int = 30
-    MAX_CONCURRENT_STREAMS: int = 5
+    # Performance test specific limits
+    PERFORMANCE_TEST_TIMEOUT: int = 300  # 5 minutes for performance tests
+    PERFORMANCE_TEST_BATCH_SIZE: int = 20000  # Match test configuration
+    PERFORMANCE_TEST_MAX_RECORDS: int = 100000  # 100K records for testing
+    
+    # System resource limits
+    MAX_MEMORY_BUFFER_MB: int = 1024    # 1GB buffer for large operations
+    PARALLEL_WORKER_THREADS: int = 4    # Based on typical hardware
 
 # Global instance
 api_limits = APILimits() 

@@ -1,5 +1,5 @@
 # app/domain/entities/schema.py
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Optional
 from pydantic import BaseModel, Field
 from app.domain.exceptions import InvalidDataException
 
@@ -9,12 +9,14 @@ class SchemaProperty(BaseModel):
     db_type: str
     required: bool = False
     default: Any = None
+    primary_key: bool = False  # New field to mark primary key components
 
 class Schema(BaseModel):
     name: str
     description: str
     table_name: str
     properties: List[SchemaProperty]
+    primary_key: Optional[List[str]] = None  # List of field names that form the composite key
 
     def validate_data(self, data: Dict[str, Any]):
         missing_required = [prop.name for prop in self.properties if prop.required and prop.name not in data]
@@ -36,3 +38,25 @@ class Schema(BaseModel):
                     raise InvalidDataException(f"Field '{prop.name}' expected array, got {type(value).__name__}")
                 if prop.type == "object" and not isinstance(value, dict):
                     raise InvalidDataException(f"Field '{prop.name}' expected object, got {type(value).__name__}")
+    
+    def get_composite_key_from_data(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Extract composite key values from data based on schema definition"""
+        if not self.primary_key:
+            return None
+        
+        composite_key = {}
+        missing_pk_fields = []
+        
+        for key_field in self.primary_key:
+            if key_field in data:
+                composite_key[key_field] = data[key_field]
+            else:
+                # Check if it's a required primary key field
+                prop = next((p for p in self.properties if p.name == key_field), None)
+                if prop and prop.primary_key:
+                    missing_pk_fields.append(key_field)
+        
+        if missing_pk_fields:
+            raise InvalidDataException(f"Primary key field(s) {', '.join(missing_pk_fields)} are required but missing")
+        
+        return composite_key if composite_key else None

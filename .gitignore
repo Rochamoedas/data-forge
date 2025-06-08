@@ -30,6 +30,7 @@ MANIFEST
 
 # Database
 data/data.duckdb
+data/data.duckdb.wal
 
 # Downloads (exclude directory but keep it in git)
 downloads/*

@@ -1,10 +1,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 import duckdb
+import multiprocessing
 from app.config.settings import settings
 
 class AsyncDuckDBPool:
-    def __init__(self, database_path: str, min_connections: int = 2, max_connections: int = 5):
+    def __init__(self, database_path: str, min_connections: int = 5, max_connections: int = 10):
         self.database_path = database_path
         self.min_connections = min_connections
         self.max_connections = max_connections
@@ -26,10 +27,15 @@ class AsyncDuckDBPool:
         # Create connection with config
         conn = duckdb.connect(database=self.database_path, config=perf_config)
         
-        # Apply additional performance settings
+        # Get number of CPU cores
+        cpu_count = multiprocessing.cpu_count()
+        
+        # Apply optimized performance settings
         conn.execute("SET enable_object_cache = true;")
-        conn.execute("SET memory_limit = '4GB';")
-        conn.execute("SET threads = 4;")
+        conn.execute("SET memory_limit = '8GB';")  # Increased memory limit
+        conn.execute(f"SET threads = {cpu_count};")  # Use all CPU cores
+        conn.execute("SET enable_progress_bar = false;")  # Disable progress bar for better performance
+        conn.execute("SET profiling_output = 'no_output';")  # Disable profiling for better performance
         
         return conn
 

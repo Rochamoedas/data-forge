@@ -6,6 +6,7 @@ from app.domain.exceptions import SchemaNotFoundException
 from app.application.dto.query_dto import DataQueryRequest
 from app.application.dto.data_dto import PaginatedResponse
 from app.config.logging_config import logger
+from app.infrastructure.web.dependencies.profiling import log_use_case_performance
 import time
 
 class QueryDataRecordsUseCase:
@@ -22,16 +23,21 @@ class QueryDataRecordsUseCase:
             
             result = await self.data_repository.get_all(schema, query_request)
             
-            duration = time.perf_counter() - start_time
-            logger.info(f"use_case_completed: QueryDataRecordsUseCase, schema_name={schema_name}, "
-                       f"page={query_request.pagination.page}, size={query_request.pagination.size}, "
-                       f"filters={len(query_request.filters or [])}, "
-                       f"total_results={result.total}, duration_ms={duration * 1000}")
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            log_use_case_performance(
+                "QueryDataRecordsUseCase", 
+                schema_name, 
+                duration_ms,
+                page=query_request.pagination.page,
+                size=query_request.pagination.size,
+                filters=len(query_request.filters or []),
+                total_results=result.total
+            )
             return result
         except Exception as e:
-            duration = time.perf_counter() - start_time
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"use_case_failed: QueryDataRecordsUseCase, error={str(e)}, "
-                        f"schema_name={schema_name}, duration_ms={duration * 1000}")
+                        f"schema_name={schema_name}, duration_ms={duration_ms:.2f}")
             raise
 
 class StreamDataRecordsUseCase:
@@ -51,13 +57,17 @@ class StreamDataRecordsUseCase:
                 record_count += 1
                 yield record
             
-            duration = time.perf_counter() - start_time
-            logger.info(f"use_case_completed: StreamDataRecordsUseCase, schema_name={schema_name}, "
-                       f"streamed_records={record_count}, duration_ms={duration * 1000}")
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            log_use_case_performance(
+                "StreamDataRecordsUseCase", 
+                schema_name, 
+                duration_ms,
+                streamed_records=record_count
+            )
         except Exception as e:
-            duration = time.perf_counter() - start_time
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"use_case_failed: StreamDataRecordsUseCase, error={str(e)}, "
-                        f"schema_name={schema_name}, duration_ms={duration * 1000}")
+                        f"schema_name={schema_name}, duration_ms={duration_ms:.2f}")
             raise
 
 class CountDataRecordsUseCase:
@@ -74,12 +84,16 @@ class CountDataRecordsUseCase:
             
             count = await self.data_repository.count_all(schema, query_request)
             
-            duration = time.perf_counter() - start_time
-            logger.info(f"use_case_completed: CountDataRecordsUseCase, schema_name={schema_name}, "
-                       f"count={count}, duration_ms={duration * 1000}")
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            log_use_case_performance(
+                "CountDataRecordsUseCase", 
+                schema_name, 
+                duration_ms,
+                count=count
+            )
             return count
         except Exception as e:
-            duration = time.perf_counter() - start_time
+            duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"use_case_failed: CountDataRecordsUseCase, error={str(e)}, "
-                        f"schema_name={schema_name}, duration_ms={duration * 1000}")
+                        f"schema_name={schema_name}, duration_ms={duration_ms:.2f}")
             raise 
