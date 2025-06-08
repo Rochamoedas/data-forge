@@ -15,7 +15,7 @@ from requests.exceptions import RequestException
 # Global configuration
 BASE_URL = "http://localhost:8080/api/v1"
 TEST_SCHEMA = "well_production"
-MOCKED_RESPONSE_FILE = "external/mocked_response_10K.json"
+MOCKED_RESPONSE_FILE = "external/mocked_response_100K.json"
 MAX_PAGE_SIZE = 1000  # Reduced page size for better testing
 BATCH_SIZE = 1000     # Reduced batch size for better testing
 TIMEOUT = 30  # Timeout in seconds
