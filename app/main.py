@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.config.settings import settings
 from app.container.container import container
-# from app.infrastructure.web.routers import data # This will be needed later
+from app.infrastructure.web.routers import data
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,4 +27,4 @@ async def read_root():
     """
     return {"message": "Platform operational", "project_name": settings.PROJECT_NAME}
 
-# app.include_router(data.router, prefix="/api/v1", tags=["Data"])
+app.include_router(data.router, prefix="/api/v1", tags=["Data"])

@@ -20,11 +20,17 @@ class AsyncDuckDBPool:
                 self._total_connections += 1
 
     async def _create_connection(self):
-        conn = duckdb.connect(database=self.database_path, config=settings.DUCKDB_PERFORMANCE_CONFIG)
+        # Get the performance config
+        perf_config = settings.DUCKDB_PERFORMANCE_CONFIG
+        
+        # Create connection with config
+        conn = duckdb.connect(database=self.database_path, config=perf_config)
+        
+        # Apply additional performance settings
         conn.execute("SET enable_object_cache = true;")
         conn.execute("SET memory_limit = '4GB';")
-        conn.execute("SET threads = 'auto';")
-        conn.execute("SET temp_directory = '/tmp/duckdb';")
+        conn.execute("SET threads = 4;")
+        
         return conn
 
     @asynccontextmanager

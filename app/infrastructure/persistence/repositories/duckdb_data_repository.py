@@ -19,7 +19,8 @@ class DuckDBDataRepository(IDataRepository):
         record = DataRecord(schema_name=schema.name, data=data)
         columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
         placeholders = ", ".join(["?"] * len(columns))
-        insert_sql = f'INSERT INTO "{schema.table_name}" ({", ".join(f'"{c}"' for c in columns)}) VALUES ({placeholders})'
+        column_names = ", ".join(f'"{c}"' for c in columns)
+        insert_sql = f'INSERT INTO "{schema.table_name}" ({column_names}) VALUES ({placeholders})'
         values = [str(record.id), record.created_at, record.version] + [record.data.get(prop.name) for prop in schema.properties]
 
         async with self.connection_pool.acquire() as conn:
@@ -36,7 +37,8 @@ class DuckDBDataRepository(IDataRepository):
             return
         columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
         placeholders = ", ".join(["?"] * len(columns))
-        insert_sql = f'INSERT INTO "{schema.table_name}" ({", ".join(f'"{c}"' for c in columns)}) VALUES ({placeholders})'
+        column_names = ", ".join(f'"{c}"' for c in columns)
+        insert_sql = f'INSERT INTO "{schema.table_name}" ({column_names}) VALUES ({placeholders})'
         values_to_insert = [(str(record.id), record.created_at, record.version) + tuple(record.data.get(prop.name) for prop in schema.properties) for record in records]
 
         async with self.connection_pool.acquire() as conn:
