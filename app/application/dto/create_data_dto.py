@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
@@ -15,8 +15,8 @@ class CreateBulkDataRequest(BaseModel):
     data: List[Dict[str, Any]] = Field(
         ...,
         description="List of data payloads to be stored",
-        min_items=api_limits.MIN_BULK_RECORDS,
-        max_items=api_limits.MAX_BULK_RECORDS
+        min_length=api_limits.MIN_BULK_RECORDS,
+        max_length=api_limits.MAX_BULK_RECORDS
     )
 
 class DataRecordResponse(BaseModel):
@@ -26,6 +26,7 @@ class DataRecordResponse(BaseModel):
     data: Dict[str, Any]
     created_at: datetime
     version: int
+    composite_id: Optional[str] = None  # String representation of composite key
 
 class CreateDataResponse(BaseModel):
     """Response model for single data creation"""

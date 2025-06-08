@@ -5,6 +5,7 @@ from app.domain.repositories.data_repository import IDataRepository
 from app.domain.repositories.schema_repository import ISchemaRepository
 from app.domain.exceptions import SchemaNotFoundException, RecordNotFoundException
 from app.config.logging_config import logger
+from app.infrastructure.web.dependencies.profiling import log_use_case_performance
 import time
 
 class GetDataRecordUseCase:
@@ -21,10 +22,17 @@ class GetDataRecordUseCase:
             record = await self.data_repository.get_by_id(schema, record_id)
             if not record:
                 raise RecordNotFoundException(f"Record with ID '{record_id}' not found in schema '{schema_name}'")
-            duration = time.perf_counter() - start_time
-            logger.info(f"use_case_completed: GetDataRecordUseCase, schema_name={schema_name}, record_id={str(record_id)}, duration_ms={duration * 1000}")
+            
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            log_use_case_performance(
+                "GetDataRecordUseCase", 
+                schema_name, 
+                duration_ms,
+                record_id=str(record_id)
+            )
             return record
         except Exception as e:
-            duration = time.perf_counter() - start_time
-            logger.error(f"use_case_failed: GetDataRecordUseCase, error={str(e)}, schema_name={schema_name}, record_id={str(record_id)}, duration_ms={duration * 1000}")
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"use_case_failed: GetDataRecordUseCase, error={str(e)}, "
+                        f"schema_name={schema_name}, record_id={str(record_id)}, duration_ms={duration_ms:.2f}")
             raise

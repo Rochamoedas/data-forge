@@ -27,6 +27,7 @@ from app.application.dto.query_dto import (
 from app.container.container import container
 from app.domain.exceptions import SchemaNotFoundException, InvalidDataException, RecordNotFoundException
 from app.config.logging_config import logger
+from app.config.api_limits import api_limits
 from app.infrastructure.web.dependencies.profiling import profiling_decorator
 
 router = APIRouter()
@@ -51,17 +52,18 @@ async def create_data_record(request: CreateDataRequest) -> CreateDataResponse:
                 schema_name=record.schema_name,
                 data=record.data,
                 created_at=record.created_at,
-                version=record.version
+                version=record.version,
+                composite_id=record.composite_id
             )
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidDataException as e:
-        logger.error(f"Invalid data: {e}")
+        logger.warning(f"Client error - Invalid data: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error creating record: {e}")
+        logger.error(f"Internal server error creating record: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/records/bulk", response_model=CreateBulkDataResponse, status_code=status.HTTP_201_CREATED)
@@ -82,7 +84,8 @@ async def create_bulk_data_records(request: CreateBulkDataRequest) -> CreateBulk
                 schema_name=record.schema_name,
                 data=record.data,
                 created_at=record.created_at,
-                version=record.version
+                version=record.version,
+                composite_id=record.composite_id
             )
             for record in records
         ]
@@ -94,21 +97,26 @@ async def create_bulk_data_records(request: CreateBulkDataRequest) -> CreateBulk
             records=response_records
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidDataException as e:
-        logger.error(f"Invalid data: {e}")
+        logger.warning(f"Client error - Invalid data: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error creating bulk records: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        # Check if it's a constraint violation (duplicate key) - common in bulk operations
+        if "Constraint Error" in str(e) and "Duplicate key" in str(e):
+            logger.warning(f"Bulk operation constraint violation: {e}")
+            raise HTTPException(status_code=409, detail=f"Duplicate key constraint violation: {str(e)}")
+        else:
+            logger.error(f"Internal server error creating bulk records: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}", response_model=QueryDataRecordsResponse)
 @profiling_decorator
 async def get_records_by_schema(
     schema_name: str,
     page: int = Query(1, ge=1, description="Page number (1-based)"),
-    size: int = Query(10, ge=1, le=1000, description="Number of records per page"),
+    size: int = Query(api_limits.DEFAULT_PAGE_SIZE, ge=api_limits.MIN_PAGE_SIZE, le=api_limits.MAX_PAGE_SIZE, description="Number of records per page"),
     filters: Optional[str] = Query(None, description="JSON string of filters array"),
     sort: Optional[str] = Query(None, description="JSON string of sort array"),
 ) -> QueryDataRecordsResponse:
@@ -155,7 +163,8 @@ async def get_records_by_schema(
                     "schema_name": record.schema_name,
                     "data": record.data,
                     "created_at": record.created_at.isoformat(),
-                    "version": record.version
+                    "version": record.version,
+                    "composite_id": record.composite_id
                 }
                 for record in result.items
             ],
@@ -173,13 +182,13 @@ async def get_records_by_schema(
             execution_time_ms=0.0  # This will be set by the profiling decorator
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in query parameters: {e}")
+        logger.warning(f"Client error - Invalid JSON in query parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON in filters or sort parameters")
     except Exception as e:
-        logger.error(f"Error retrieving records: {e}")
+        logger.error(f"Internal server error retrieving records: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/stream")
@@ -188,7 +197,7 @@ async def stream_records_by_schema(
     schema_name: str,
     filters: Optional[str] = Query(None, description="JSON string of filters array"),
     sort: Optional[str] = Query(None, description="JSON string of sort array"),
-    limit: Optional[int] = Query(None, ge=1, le=10000, description="Maximum number of records to stream"),
+    limit: Optional[int] = Query(None, ge=api_limits.MIN_STREAM_LIMIT, le=api_limits.MAX_STREAM_LIMIT, description="Maximum number of records to stream"),
 ):
     """
     Stream records from a specific schema/table for high-performance data access
@@ -236,7 +245,8 @@ async def stream_records_by_schema(
                         "schema_name": record.schema_name,
                         "data": record.data,
                         "created_at": record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at),
-                        "version": record.version
+                        "version": record.version,
+                        "composite_id": record.composite_id
                     }
                     yield json.dumps(record_data, default=str) + "\n"
                     record_count += 1
@@ -256,13 +266,13 @@ async def stream_records_by_schema(
             }
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in query parameters: {e}")
+        logger.warning(f"Client error - Invalid JSON in query parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON in filters or sort parameters")
     except Exception as e:
-        logger.error(f"Error streaming records: {e}")
+        logger.error(f"Internal server error streaming records: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/count", response_model=CountDataRecordsResponse)
@@ -301,13 +311,13 @@ async def count_records_by_schema(
             execution_time_ms=0.0  # This will be set by the profiling decorator
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in query parameters: {e}")
+        logger.warning(f"Client error - Invalid JSON in query parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON in filters parameters")
     except Exception as e:
-        logger.error(f"Error counting records: {e}")
+        logger.error(f"Internal server error counting records: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/{record_id}", response_model=DataRecordResponse)
@@ -327,16 +337,56 @@ async def get_record_by_id(schema_name: str, record_id: UUID) -> DataRecordRespo
             schema_name=record.schema_name,
             data=record.data,
             created_at=record.created_at,
-            version=record.version
+            version=record.version,
+            composite_id=record.composite_id
         )
     except SchemaNotFoundException as e:
-        logger.error(f"Schema not found: {e}")
+        logger.warning(f"Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except RecordNotFoundException as e:
-        logger.error(f"Record not found: {e}")
+        logger.warning(f"Client error - Record not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Error retrieving record: {e}")
+        logger.error(f"Internal server error retrieving record: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/records/{schema_name}/by-key/{composite_id}", response_model=DataRecordResponse)
+@profiling_decorator
+async def get_record_by_composite_key(schema_name: str, composite_id: str) -> DataRecordResponse:
+    """
+    Get a specific record by composite key from a schema/table
+    Example: /records/production_data/by-key/field_code=123&well_code=456&production_period=2024-01
+    """
+    try:
+        # Parse composite_id back to dict
+        composite_key = DataRecord.parse_composite_id(composite_id)
+        
+        # Get schema to validate composite key
+        schema = await container.schema_repository.get_schema_by_name(schema_name)
+        if not schema:
+            raise HTTPException(status_code=404, detail=f"Schema '{schema_name}' not found")
+        
+        if not schema.primary_key:
+            raise HTTPException(status_code=400, detail=f"Schema '{schema_name}' does not support composite keys")
+        
+        # Get record by composite key
+        record = await container.data_repository.get_by_composite_key(schema, composite_key)
+        
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Record not found with composite key: {composite_id}")
+        
+        return DataRecordResponse(
+            id=record.id,
+            schema_name=record.schema_name,
+            data=record.data,
+            created_at=record.created_at,
+            version=record.version,
+            composite_id=record.composite_id
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Internal server error retrieving record by composite key: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/schemas")
@@ -352,11 +402,13 @@ async def get_available_schemas() -> List[Dict]:
                 "name": schema.name,
                 "description": schema.description,
                 "table_name": schema.table_name,
+                "primary_key": schema.primary_key,
                 "properties": [
                     {
                         "name": prop.name, 
                         "type": prop.type, 
-                        "required": prop.required
+                        "required": prop.required,
+                        "primary_key": prop.primary_key
                     } 
                     for prop in schema.properties
                 ]
@@ -364,5 +416,5 @@ async def get_available_schemas() -> List[Dict]:
             for schema in schemas
         ]
     except Exception as e:
-        logger.error(f"Error retrieving schemas: {e}")
+        logger.error(f"Internal server error retrieving schemas: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

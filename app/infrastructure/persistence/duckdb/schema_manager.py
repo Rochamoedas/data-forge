@@ -19,12 +19,19 @@ class DuckDBSchemaManager:
                 # Create all tables
                 for schema in schemas:
                     column_defs = ", ".join([f'"{prop.name}" {prop.db_type}' for prop in schema.properties])
+                    
+                    # Build composite primary key constraint if defined
+                    composite_pk_constraint = ""
+                    if schema.primary_key:
+                        pk_columns = ", ".join([f'"{col}"' for col in schema.primary_key])
+                        composite_pk_constraint = f", UNIQUE({pk_columns})"
+                    
                     create_table_sql = f"""
                     CREATE TABLE IF NOT EXISTS "{schema.table_name}" (
                         id VARCHAR PRIMARY KEY,
                         created_at TIMESTAMP,
                         version INTEGER,
-                        {column_defs}
+                        {column_defs}{composite_pk_constraint}
                     );
                     """
                     conn.execute(create_table_sql)
@@ -35,6 +42,11 @@ class DuckDBSchemaManager:
                     conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_{schema.table_name}_id" ON "{schema.table_name}"(id);')
                     conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_{schema.table_name}_created_at" ON "{schema.table_name}"(created_at);')
                     
+                    # Create composite key index for performance
+                    if schema.primary_key:
+                        pk_columns = ", ".join([f'"{col}"' for col in schema.primary_key])
+                        conn.execute(f'CREATE INDEX IF NOT EXISTS "idx_{schema.table_name}_composite_key" ON "{schema.table_name}"({pk_columns});')
+                    
                     # Create indexes for required fields
                     for prop in schema.properties:
                         if prop.required:
@@ -42,7 +54,7 @@ class DuckDBSchemaManager:
                 
                 # Commit transaction
                 conn.execute("COMMIT")
-                logger.info(f"Created/verified {len(schemas)} tables and their indexes in a single transaction")
+                logger.info(f"Created/verified {len(schemas)} tables with composite keys and their indexes in a single transaction")
                 
             except Exception as e:
                 conn.execute("ROLLBACK")
