@@ -2,6 +2,7 @@ from typing import Dict, Any, List
 from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
+from app.config.api_limits import api_limits
 
 class CreateDataRequest(BaseModel):
     """Request model for creating a single data record"""
@@ -11,7 +12,12 @@ class CreateDataRequest(BaseModel):
 class CreateBulkDataRequest(BaseModel):
     """Request model for creating multiple data records in bulk"""
     schema_name: str = Field(..., description="Name of the schema/table")
-    data: List[Dict[str, Any]] = Field(..., description="List of data payloads to be stored", min_items=1)
+    data: List[Dict[str, Any]] = Field(
+        ...,
+        description="List of data payloads to be stored",
+        min_items=api_limits.MIN_BULK_RECORDS,
+        max_items=api_limits.MAX_BULK_RECORDS
+    )
 
 class DataRecordResponse(BaseModel):
     """Response model for a single data record"""
