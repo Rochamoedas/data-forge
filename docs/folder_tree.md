@@ -1,3 +1,5 @@
+# Project Folder Structure
+
 ```
 react-fast-V12/
 ├── .env
@@ -31,6 +33,7 @@ react-fast-V12/
 │   │   ├── persistence/
 │   │   │   ├── duckdb/
 │   │   │   │   ├── connection.py
+│   │   │   │   ├── connection_pool.py
 │   │   │   │   └── schema_manager.py
 │   │   │   ├── mappers/
 │   │   │   │   └── generic_mapper.py
