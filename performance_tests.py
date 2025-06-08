@@ -38,7 +38,7 @@ def convert_decimal(obj):
 # Global configuration
 BASE_URL = "http://localhost:8080/api/v1"
 TEST_SCHEMA = "well_production"
-MOCKED_RESPONSE_FILE = "external/mocked_response_100K-4.json"
+MOCKED_RESPONSE_FILE = "external/mocked_response_duplicates.json"
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
