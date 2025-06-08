@@ -27,10 +27,12 @@ from app.application.dto.query_dto import (
 from app.container.container import container
 from app.domain.exceptions import SchemaNotFoundException, InvalidDataException, RecordNotFoundException
 from app.config.logging_config import logger
+from app.infrastructure.web.dependencies.profiling import profiling_decorator
 
 router = APIRouter()
 
 @router.post("/records", response_model=CreateDataResponse, status_code=status.HTTP_201_CREATED)
+@profiling_decorator
 async def create_data_record(request: CreateDataRequest) -> CreateDataResponse:
     """
     Create a single data record in the specified schema/table
@@ -63,6 +65,7 @@ async def create_data_record(request: CreateDataRequest) -> CreateDataResponse:
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/records/bulk", response_model=CreateBulkDataResponse, status_code=status.HTTP_201_CREATED)
+@profiling_decorator
 async def create_bulk_data_records(request: CreateBulkDataRequest) -> CreateBulkDataResponse:
     """
     Create multiple data records in bulk for fast operations
@@ -101,6 +104,7 @@ async def create_bulk_data_records(request: CreateBulkDataRequest) -> CreateBulk
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}", response_model=QueryDataRecordsResponse)
+@profiling_decorator
 async def get_records_by_schema(
     schema_name: str,
     page: int = Query(1, ge=1, description="Page number (1-based)"),
@@ -114,7 +118,6 @@ async def get_records_by_schema(
     Example filters: [{"field": "field_name", "operator": "eq", "value": "test"}]
     Example sort: [{"field": "created_at", "order": "desc"}]
     """
-    start_time = time.perf_counter()
     try:
         # Parse filters and sort from JSON strings
         parsed_filters = []
@@ -163,12 +166,11 @@ async def get_records_by_schema(
             "has_previous": result.has_previous
         }
         
-        duration = time.perf_counter() - start_time
         return QueryDataRecordsResponse(
             message=f"Successfully retrieved {len(result.items)} records from {schema_name}",
             schema_name=schema_name,
             data=response_data,
-            execution_time_ms=duration * 1000
+            execution_time_ms=0.0  # This will be set by the profiling decorator
         )
     except SchemaNotFoundException as e:
         logger.error(f"Schema not found: {e}")
@@ -181,6 +183,7 @@ async def get_records_by_schema(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/stream")
+@profiling_decorator
 async def stream_records_by_schema(
     schema_name: str,
     filters: Optional[str] = Query(None, description="JSON string of filters array"),
@@ -263,6 +266,7 @@ async def stream_records_by_schema(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/count", response_model=CountDataRecordsResponse)
+@profiling_decorator
 async def count_records_by_schema(
     schema_name: str,
     filters: Optional[str] = Query(None, description="JSON string of filters array"),
@@ -270,7 +274,6 @@ async def count_records_by_schema(
     """
     Get the count of records in a specific schema/table with optional filtering
     """
-    start_time = time.perf_counter()
     try:
         # Parse filters from JSON string
         parsed_filters = []
@@ -291,12 +294,11 @@ async def count_records_by_schema(
         
         count = await container.count_data_records_use_case.execute(schema_name, query_request)
         
-        duration = time.perf_counter() - start_time
         return CountDataRecordsResponse(
             message=f"Successfully counted records in {schema_name}",
             schema_name=schema_name,
             count=count,
-            execution_time_ms=duration * 1000
+            execution_time_ms=0.0  # This will be set by the profiling decorator
         )
     except SchemaNotFoundException as e:
         logger.error(f"Schema not found: {e}")
@@ -309,6 +311,7 @@ async def count_records_by_schema(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/{record_id}", response_model=DataRecordResponse)
+@profiling_decorator
 async def get_record_by_id(schema_name: str, record_id: UUID) -> DataRecordResponse:
     """
     Get a specific record by ID from a schema/table
@@ -337,6 +340,7 @@ async def get_record_by_id(schema_name: str, record_id: UUID) -> DataRecordRespo
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/schemas")
+@profiling_decorator
 async def get_available_schemas() -> List[Dict]:
     """
     Get list of available schemas/tables

@@ -12,10 +12,15 @@ class FileSchemaRepository(ISchemaRepository):
         self.schema_manager = schema_manager
 
     async def initialize(self):
+        # Create all schemas first
+        schemas = []
         for schema_data in SCHEMAS_METADATA:
             schema = Schema(**schema_data)
             self._schemas[schema.name] = schema
-            await self.schema_manager.ensure_table_exists(schema)
+            schemas.append(schema)
+        
+        # Create all tables and indexes in a single transaction
+        await self.schema_manager.ensure_tables_exist(schemas)
         logger.info(f"Loaded {len(self._schemas)} schemas and ensured tables in DuckDB.")
 
     async def get_schema_by_name(self, name: str) -> Optional[Schema]:
