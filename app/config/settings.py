@@ -24,6 +24,9 @@ class Settings:
             'threads': 4,                    # Fixed number for stability
             'enable_object_cache': True,
             'temp_directory': temp_dir,      # Platform-appropriate temp storage
+            'allow_unsigned_extensions': True,  # Allow local extensions
+            'autoinstall_known_extensions': False,  # Disable auto-download
+            'autoload_known_extensions': False,     # Disable auto-load
         }
 
 settings = Settings()

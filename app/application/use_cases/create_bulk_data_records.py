@@ -4,7 +4,7 @@ from app.domain.repositories.data_repository import IDataRepository
 from app.domain.repositories.schema_repository import ISchemaRepository
 from app.domain.exceptions import SchemaNotFoundException, InvalidDataException
 from app.config.logging_config import logger
-from app.infrastructure.web.dependencies.profiling import log_use_case_performance
+
 import time
 
 class CreateBulkDataRecordsUseCase:
@@ -63,14 +63,7 @@ class CreateBulkDataRecordsUseCase:
             logger.info(f"Bulk insert completed: {len(records)} records inserted, "
                        f"{duplicates_removed} duplicates removed from {original_count} total records")
             
-            log_use_case_performance(
-                "CreateBulkDataRecordsUseCase", 
-                schema_name, 
-                duration_ms,
-                records_count=len(records),
-                original_count=original_count,
-                duplicates_removed=duplicates_removed
-            )
+
             
             return records
             
