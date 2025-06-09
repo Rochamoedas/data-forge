@@ -1,21 +1,19 @@
 import time
 import functools
 import psutil
-import tracemalloc
 from typing import Callable, Any, Dict, Optional
-from fastapi import Request
 from app.config.logging_config import logger
 from contextlib import contextmanager
 import threading
+import asyncio
 
 class PerformanceMetrics:
     def __init__(self):
         self.start_time = 0.0
         self.end_time = 0.0
-        self.start_memory = 0
-        self.end_memory = 0
+        self.start_memory_mb = 0.0
+        self.end_memory_mb = 0.0
         self.cpu_percent = 0.0
-        self.memory_percent = 0.0
         self._process = psutil.Process()
 
     @property
@@ -24,14 +22,13 @@ class PerformanceMetrics:
 
     @property
     def memory_usage_mb(self) -> float:
-        return max(0.0, (self.end_memory - self.start_memory) / (1024 * 1024))
+        return max(0.0, self.end_memory_mb - self.start_memory_mb)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "execution_time_ms": round(self.execution_time_ms, 2),
             "memory_usage_mb": round(self.memory_usage_mb, 2),
-            "cpu_percent": round(self.cpu_percent, 1),
-            "memory_percent": round(self.memory_percent, 1)
+            "cpu_percent": round(self.cpu_percent, 1)
         }
 
 # Thread-local storage for performance context
@@ -39,21 +36,22 @@ _performance_context = threading.local()
 
 @contextmanager
 def measure_performance():
-    """Context manager for measuring performance metrics"""
+    """Lightweight context manager for measuring performance metrics"""
     metrics = PerformanceMetrics()
     
     # Start measurements
     metrics.start_time = time.perf_counter()
-    
-    # Start memory tracing if not already started
     try:
-        tracemalloc.start()
-        metrics.start_memory = tracemalloc.get_traced_memory()[0]
-    except RuntimeError:
-        # tracemalloc already started
-        metrics.start_memory = tracemalloc.get_traced_memory()[0]
+        # Get initial memory usage
+        memory_info = metrics._process.memory_info()
+        metrics.start_memory_mb = memory_info.rss / (1024 * 1024)
+        
+        # Start CPU measurement (requires a small interval)
+        metrics._process.cpu_percent()  # Initialize CPU measurement
+    except:
+        metrics.start_memory_mb = 0.0
     
-    # Store in thread-local context to prevent nested logging
+    # Store in thread-local context
     _performance_context.active_metrics = metrics
     
     try:
@@ -61,18 +59,17 @@ def measure_performance():
     finally:
         # End measurements
         metrics.end_time = time.perf_counter()
-        try:
-            metrics.end_memory = tracemalloc.get_traced_memory()[0]
-        except:
-            metrics.end_memory = metrics.start_memory
         
-        # Get CPU and memory percentages (these are instantaneous)
         try:
-            metrics.cpu_percent = metrics._process.cpu_percent(interval=None)
-            metrics.memory_percent = metrics._process.memory_percent()
+            # Get final memory usage
+            memory_info = metrics._process.memory_info()
+            metrics.end_memory_mb = memory_info.rss / (1024 * 1024)
+            
+            # Get CPU usage (with small interval for accuracy)
+            metrics.cpu_percent = metrics._process.cpu_percent(interval=0.1)
         except:
+            metrics.end_memory_mb = metrics.start_memory_mb
             metrics.cpu_percent = 0.0
-            metrics.memory_percent = 0.0
         
         # Clear thread-local context
         _performance_context.active_metrics = None
@@ -83,26 +80,35 @@ def is_performance_monitoring_active() -> bool:
 
 def profiling_decorator(func: Callable) -> Callable:
     """
-    Consolidated profiling decorator that measures performance without duplication
+    Lightweight profiling decorator that measures performance accurately
     """
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Skip if already monitoring in this thread (prevents nested logging)
-        if is_performance_monitoring_active():
-            return await func(*args, **kwargs)
-        
+        # Always measure performance for API endpoints
         with measure_performance() as metrics:
             try:
                 # Execute the endpoint function
                 response = await func(*args, **kwargs)
                 
-                # Log consolidated performance metrics
-                logger.info(
-                    f"API Performance - {func.__name__}: "
-                    f"Time: {metrics.execution_time_ms:.2f}ms, "
-                    f"Memory: {metrics.memory_usage_mb:.2f}MB, "
-                    f"CPU: {metrics.cpu_percent:.1f}%"
-                )
+                # Log performance metrics with appropriate detail level
+                execution_time = metrics.execution_time_ms
+                memory_usage = metrics.memory_usage_mb
+                cpu_usage = metrics.cpu_percent
+                
+                # Only log if there's meaningful activity (avoid logging zeros)
+                if execution_time > 0.1 or memory_usage > 0.1 or cpu_usage > 0.1:
+                    logger.info(
+                        f"API Performance - {func.__name__}: "
+                        f"Time: {execution_time:.2f}ms, "
+                        f"Memory: {memory_usage:.2f}MB, "
+                        f"CPU: {cpu_usage:.1f}%"
+                    )
+                else:
+                    # For very fast operations, just log the time
+                    logger.info(
+                        f"API Performance - {func.__name__}: "
+                        f"Time: {execution_time:.2f}ms"
+                    )
                 
                 # Add performance metrics to response if it's a dictionary
                 if isinstance(response, dict):
@@ -111,64 +117,79 @@ def profiling_decorator(func: Callable) -> Callable:
                 return response
                 
             except Exception as e:
-                # Log performance metrics even on error - use appropriate level based on error type
+                # Log performance metrics even on error
                 error_str = str(e)
+                execution_time = metrics.execution_time_ms
+                
                 if "404" in error_str or "400" in error_str or "409" in error_str:
                     # Client errors - use warning level
                     logger.warning(
                         f"API Performance - {func.__name__} (CLIENT_ERROR): "
-                        f"Time: {metrics.execution_time_ms:.2f}ms, "
-                        f"Memory: {metrics.memory_usage_mb:.2f}MB, "
-                        f"CPU: {metrics.cpu_percent:.1f}%, "
+                        f"Time: {execution_time:.2f}ms, "
                         f"Error: {error_str}"
                     )
                 else:
                     # Server errors - use error level
                     logger.error(
                         f"API Performance - {func.__name__} (SERVER_ERROR): "
-                        f"Time: {metrics.execution_time_ms:.2f}ms, "
-                        f"Memory: {metrics.memory_usage_mb:.2f}MB, "
-                        f"CPU: {metrics.cpu_percent:.1f}%, "
+                        f"Time: {execution_time:.2f}ms, "
                         f"Error: {error_str}"
                     )
                 raise
     
     return wrapper
 
-# Utility function for repository-level performance logging
+# Simplified repository-level performance logging
 def log_repository_performance(operation_name: str, schema_name: str, metrics: Dict[str, Any], **extra_info):
     """
-    Consolidated repository performance logging
+    Lightweight repository performance logging
     """
-    # Skip if API-level monitoring is active (prevents duplicate logging)
-    if is_performance_monitoring_active():
-        return
+    execution_time = metrics.get('execution_time_ms', 0)
+    memory_usage = metrics.get('memory_usage_mb', 0)
+    cpu_usage = metrics.get('cpu_percent', 0)
     
     extra_details = ", ".join([f"{k}={v}" for k, v in extra_info.items()]) if extra_info else ""
     details_str = f", {extra_details}" if extra_details else ""
     
-    logger.info(
-        f"DB Performance - {operation_name} [{schema_name}]: "
-        f"Time: {metrics.get('execution_time_ms', 0):.2f}ms, "
-        f"Memory: {metrics.get('memory_usage_mb', 0):.2f}MB, "
-        f"CPU: {metrics.get('cpu_percent', 0):.1f}%"
-        f"{details_str}"
-    )
+    # Only log meaningful metrics
+    if execution_time > 1.0 or memory_usage > 1.0:
+        logger.info(
+            f"DB Performance - {operation_name} [{schema_name}]: "
+            f"Time: {execution_time:.2f}ms, "
+            f"Memory: {memory_usage:.2f}MB, "
+            f"CPU: {cpu_usage:.1f}%"
+            f"{details_str}"
+        )
 
-# Utility function for use case performance logging  
+# Simplified use case performance logging  
 def log_use_case_performance(use_case_name: str, schema_name: str, duration_ms: float, **extra_info):
     """
-    Consolidated use case performance logging
+    Lightweight use case performance logging
     """
-    # Skip if API-level monitoring is active (prevents duplicate logging)
-    if is_performance_monitoring_active():
-        return
+    extra_details = ", ".join([f"{k}={v}" for k, v in extra_info.items()]) if extra_info else ""
+    details_str = f", {extra_details}" if extra_details else ""
     
+    # Only log operations that take meaningful time
+    if duration_ms > 1.0:
+        logger.info(
+            f"UseCase Performance - {use_case_name} [{schema_name}]: "
+            f"Time: {duration_ms:.2f}ms"
+            f"{details_str}"
+        )
+
+# Utility for bulk operation performance logging
+def log_bulk_operation_performance(operation_name: str, schema_name: str, record_count: int, duration_ms: float, **extra_info):
+    """
+    Specialized logging for bulk operations with record count context
+    """
+    records_per_second = int(record_count / (duration_ms / 1000)) if duration_ms > 0 else 0
     extra_details = ", ".join([f"{k}={v}" for k, v in extra_info.items()]) if extra_info else ""
     details_str = f", {extra_details}" if extra_details else ""
     
     logger.info(
-        f"UseCase Performance - {use_case_name} [{schema_name}]: "
-        f"Time: {duration_ms:.2f}ms"
+        f"Bulk Performance - {operation_name} [{schema_name}]: "
+        f"Records: {record_count}, "
+        f"Time: {duration_ms:.2f}ms, "
+        f"Throughput: {records_per_second} records/sec"
         f"{details_str}"
     ) 

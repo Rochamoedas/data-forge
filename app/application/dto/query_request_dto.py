@@ -89,7 +89,6 @@ class QueryDataRecordsResponse(BaseModel):
     message: str
     schema_name: str
     data: Dict[str, Any]  # This will contain the PaginatedResponse data
-    execution_time_ms: float
 
 class CountDataRecordsResponse(BaseModel):
     """Response model for count results"""
@@ -97,7 +96,6 @@ class CountDataRecordsResponse(BaseModel):
     message: str
     schema_name: str
     count: int
-    execution_time_ms: float
 
 class DataRecordStreamResponse(BaseModel):
     """Response model for individual streamed records"""
