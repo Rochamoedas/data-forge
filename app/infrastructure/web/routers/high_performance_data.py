@@ -12,6 +12,8 @@ import time
 import tempfile
 import asyncio
 from uuid import UUID
+from datetime import datetime
+from decimal import Decimal
 
 from app.container.container import container
 from app.domain.exceptions import SchemaNotFoundException, InvalidDataException
@@ -20,25 +22,40 @@ from app.config.logging_config import logger
 
 router = APIRouter()
 
+def json_serializer(obj):
+    """Custom JSON serializer for handling datetime and other non-serializable objects"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    elif hasattr(obj, '__dict__'):
+        return obj.__dict__
+    else:
+        return str(obj)
+
 @router.post("/ultra-fast-bulk/{schema_name}")
 async def ultra_fast_bulk_insert(
     schema_name: str,
     data: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    🚀 Ultra-fast bulk insert using Polars → Arrow → DuckDB pipeline
+    🚀 Ultra-fast bulk insert using Polars + Arrow + DuckDB pipeline
     
     Performance benefits:
-    - 10-100x faster than traditional bulk inserts
-    - Memory efficient processing
-    - Zero-copy data transfers
-    - Automatic data validation and type casting
+    - 10-100x faster than traditional methods
+    - Memory-efficient processing
+    - Vectorized operations
+    - Optimized for large datasets (100K+ records)
     """
     try:
         # Get schema
         schema = await container.schema_repository.get_schema_by_name(schema_name)
         if not schema:
             raise HTTPException(status_code=404, detail=f"Schema '{schema_name}' not found")
+        
+        # Validate input
+        if not data:
+            raise HTTPException(status_code=400, detail="No data provided")
         
         # Use high-performance processor
         result = await container.high_performance_processor.bulk_insert_ultra_fast(
@@ -53,11 +70,8 @@ async def ultra_fast_bulk_insert(
             "optimization": "polars_arrow_duckdb_pipeline"
         }
         
-    except SchemaNotFoundException as e:
-        logger.warning(f"Schema not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        logger.error(f"Ultra-fast bulk insert failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Ultra-fast bulk insert failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/query-optimized/{schema_name}")
@@ -68,13 +82,13 @@ async def query_with_polars_optimization(
     analysis: Optional[str] = Query(None, description="Analysis type: summary, profile, quality")
 ) -> Dict[str, Any]:
     """
-    🚀 Ultra-fast querying using DuckDB → Arrow → Polars pipeline
+    🚀 Ultra-fast querying using DuckDB + Polars optimization
     
     Performance benefits:
     - Vectorized query execution
-    - Zero-copy data transfers
-    - Fast post-processing with Polars
-    - Built-in data analysis capabilities
+    - Memory-efficient processing
+    - Optional data analysis
+    - Optimized for analytical workloads
     """
     try:
         # Get schema
@@ -82,49 +96,49 @@ async def query_with_polars_optimization(
         if not schema:
             raise HTTPException(status_code=404, detail=f"Schema '{schema_name}' not found")
         
-        # Parse filters
-        filter_dict = {}
+        # Parse filters if provided
+        parsed_filters = None
         if filters:
-            filter_dict = json.loads(filters)
+            try:
+                parsed_filters = json.loads(filters)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON in filters")
         
-        # Execute optimized query
+        # Query with optimization
         df = await container.high_performance_processor.query_with_polars_optimization(
             schema=schema,
-            filters=filter_dict,
-            limit=limit
+            filters=parsed_filters,
+            limit=limit or 1000
         )
         
-        # Convert to response format
+        # Convert to records with proper JSON serialization
         records = df.to_dicts()
         
-        response = {
-            "success": True,
-            "schema_name": schema_name,
-            "records_count": len(records),
-            "records": records[:100] if len(records) > 100 else records,  # Limit response size
-            "optimization": "duckdb_arrow_polars_pipeline"
-        }
-        
-        # Add analysis if requested
+        # Optional analysis
+        analysis_result = None
         if analysis:
             analysis_result = await container.high_performance_processor.analyze_with_polars(
                 schema=schema,
                 analysis_type=analysis
             )
-            response["analysis"] = analysis_result
         
-        return response
+        return {
+            "success": True,
+            "schema_name": schema_name,
+            "records": records,
+            "record_count": len(records),
+            "analysis": analysis_result,
+            "optimization": "duckdb_polars_pipeline"
+        }
         
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail="Invalid JSON in filters")
     except Exception as e:
-        logger.error(f"Optimized query failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Optimized query failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/stream-arrow-batches/{schema_name}")
 async def stream_with_arrow_batches(
     schema_name: str,
-    batch_size: int = Query(50000, description="Arrow batch size")
+    batch_size: int = Query(250000, description="Arrow batch size (optimized for high-end hardware)")
 ):
     """
     🚀 Ultra-fast streaming using Arrow batches
@@ -142,38 +156,57 @@ async def stream_with_arrow_batches(
             raise HTTPException(status_code=404, detail=f"Schema '{schema_name}' not found")
         
         async def generate_arrow_stream():
-            """Generate streaming response with Arrow batches"""
-            yield '{"stream_type": "arrow_batches", "data": [\n'
+            """Generate streaming response with Arrow batches in NDJSON format"""
+            # Send stream metadata as first line
+            metadata = {
+                "stream_type": "arrow_batches",
+                "schema_name": schema_name,
+                "batch_size": batch_size,
+                "timestamp": datetime.now().isoformat()
+            }
+            yield json.dumps(metadata, default=json_serializer) + '\n'
             
-            first_batch = True
+            batch_count = 0
+            total_records = 0
+            
             async for df_batch in container.high_performance_processor.stream_with_arrow_batches(
                 schema=schema,
                 batch_size=batch_size
             ):
-                if not first_batch:
-                    yield ',\n'
+                batch_count += 1
+                batch_records = len(df_batch)
+                total_records += batch_records
                 
-                # Convert batch to JSON
+                # Convert batch to JSON with custom serializer (NDJSON format)
                 batch_data = {
-                    "batch_size": len(df_batch),
+                    "batch_number": batch_count,
+                    "batch_size": batch_records,
+                    "total_records_so_far": total_records,
                     "records": df_batch.to_dicts()
                 }
-                yield json.dumps(batch_data)
-                first_batch = False
+                yield json.dumps(batch_data, default=json_serializer) + '\n'
             
-            yield '\n]}'
+            # Send final summary as last line
+            summary = {
+                "stream_complete": True,
+                "total_batches": batch_count,
+                "total_records": total_records,
+                "timestamp": datetime.now().isoformat()
+            }
+            yield json.dumps(summary, default=json_serializer) + '\n'
         
         return StreamingResponse(
             generate_arrow_stream(),
-            media_type="application/json",
+            media_type="application/x-ndjson",
             headers={
-                "X-Stream-Type": "arrow-batches",
-                "X-Optimization": "arrow-polars-streaming"
+                "X-Stream-Type": "arrow-batches-ndjson",
+                "X-Optimization": "arrow-polars-streaming",
+                "Content-Type": "application/x-ndjson"
             }
         )
         
     except Exception as e:
-        logger.error(f"Arrow batch streaming failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Arrow batch streaming failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/export-parquet/{schema_name}")
@@ -216,7 +249,7 @@ async def export_to_parquet_optimized(
         }
         
     except Exception as e:
-        logger.error(f"Parquet export failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Parquet export failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/analyze/{schema_name}")
@@ -252,7 +285,7 @@ async def analyze_data_with_polars(
         }
         
     except Exception as e:
-        logger.error(f"Data analysis failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Data analysis failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/benchmark/{schema_name}")
@@ -366,7 +399,7 @@ async def performance_benchmark(
                         "percentage_faster": round((improvement_factor - 1) * 100, 1)
                     }
             except Exception as traditional_error:
-                logger.warning(f"Traditional method benchmark failed: {traditional_error}")
+                logger.warning(f"[HIGH-PERF-API] Traditional method benchmark failed: {traditional_error}")
                 benchmark_results["traditional_method"] = {
                     "method": "traditional_bulk_insert",
                     "error": str(traditional_error),
@@ -382,5 +415,5 @@ async def performance_benchmark(
         }
         
     except Exception as e:
-        logger.error(f"Performance benchmark failed: {e}")
+        logger.error(f"[HIGH-PERF-API] Performance benchmark failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error") 
