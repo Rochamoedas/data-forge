@@ -305,66 +305,117 @@ class HighPerformanceDataProcessor:
         limit: Optional[int] = None
     ) -> pl.DataFrame:
         """
-        🚀 Ultra-fast querying using optimized DuckDB → Polars pipeline
+        🚀 Ultra-fast querying using optimized DuckDB → Arrow → Polars pipeline
         
         Performance benefits:
         - Vectorized query execution in DuckDB
-        - Efficient data transfer
+        - Direct Arrow integration (zero-copy when possible)
         - Fast post-processing with Polars
+        - Optimized for large datasets
         """
         start_time = time.perf_counter()
         
         async with self.connection_pool.acquire() as conn:
             try:
-                # Build optimized query
-                query = f'SELECT * FROM "{schema.table_name}"'
+                # Setup DuckDB optimizations for read performance
+                def setup_read_optimizations():
+                    try:
+                        # Optimize DuckDB for read performance
+                        conn.execute("PRAGMA enable_progress_bar=false")
+                        conn.execute("PRAGMA threads=16")  # Use all cores for parallel processing
+                        conn.execute("PRAGMA memory_limit='12GB'")  # Use more memory for better performance
+                        conn.execute("PRAGMA max_memory='12GB'")
+                        conn.execute("PRAGMA temp_directory='/tmp'")
+                        
+                        # Enable query optimizations - FIXED: Use disabled_optimizers instead of enable_optimizer
+                        conn.execute("PRAGMA disabled_optimizers=''")  # Enable all optimizers
+                        conn.execute("PRAGMA enable_profiling=false")  # Disable profiling for speed
+                        conn.execute("PRAGMA enable_progress_bar=false")
+                        
+                        # Try to install and load Arrow extension for zero-copy transfers
+                        try:
+                            conn.execute("INSTALL arrow")
+                            conn.execute("LOAD arrow")
+                            return True
+                        except Exception:
+                            logger.warning("[HIGH-PERF-PROCESSOR] Arrow extension not available, using optimized fallback")
+                            return False
+                    except Exception as e:
+                        logger.warning(f"[HIGH-PERF-PROCESSOR] Setup optimizations failed: {e}")
+                        return False
+                
+                use_arrow = await asyncio.to_thread(setup_read_optimizations)
+                
+                # Build optimized query with proper indexing hints
+                query_parts = [f'SELECT * FROM "{schema.table_name}"']
                 params = []
                 
                 if filters:
                     where_conditions = []
                     for field, value in filters.items():
+                        # Use proper parameterized queries for security and performance
                         where_conditions.append(f'"{field}" = ?')
                         params.append(value)
-                    query += f" WHERE {' AND '.join(where_conditions)}"
+                    query_parts.append(f"WHERE {' AND '.join(where_conditions)}")
+                
+                # Add ORDER BY for consistent results and better performance with indexes
+                query_parts.append("ORDER BY id")
                 
                 if limit:
-                    query += f" LIMIT {limit}"
+                    query_parts.append(f"LIMIT {limit}")
                 
-                # Use optimized DuckDB → dict → Polars pipeline (no Arrow extension needed)
-                logger.info("[HIGH-PERF-PROCESSOR] Using optimized DuckDB → Polars pipeline (no Arrow extension needed)")
+                query = " ".join(query_parts)
                 
-                # ✅ FIX: Execute query in thread pool to avoid blocking
-                def execute_query():
-                    result = conn.execute(query, params).fetchall()
-                    description = conn.description
-                    return result, description
+                # Execute query with the best available method
+                def execute_optimized_query():
+                    if use_arrow and limit and limit >= 10000:  # Use Arrow for larger datasets
+                        try:
+                            # 🚀 ULTRA-FAST: Direct DuckDB → Arrow → Polars pipeline
+                            logger.info("[HIGH-PERF-PROCESSOR] Using ULTRA-FAST DuckDB → Arrow → Polars pipeline")
+                            arrow_result = conn.execute(query, params).arrow()
+                            df = pl.from_arrow(arrow_result)
+                            return df, "arrow_zero_copy_optimized"
+                        except Exception as arrow_error:
+                            logger.warning(f"[HIGH-PERF-PROCESSOR] Arrow method failed: {arrow_error}, falling back to optimized method")
+                            # Fall through to optimized fallback
+                    
+                    # 🚀 OPTIMIZED FALLBACK: DuckDB → dict → Polars with optimizations
+                    logger.info("[HIGH-PERF-PROCESSOR] Using optimized DuckDB → Polars pipeline")
+                    
+                    # Use fetchdf() if available (DuckDB's optimized DataFrame method)
+                    try:
+                        # Try DuckDB's native DataFrame conversion (fastest for medium datasets)
+                        result_relation = conn.execute(query, params)
+                        df_dict = result_relation.df()  # DuckDB's optimized pandas DataFrame
+                        
+                        # Convert pandas to Polars (still faster than manual conversion)
+                        df = pl.from_pandas(df_dict)
+                        return df, "duckdb_native_dataframe_optimized"
+                    except Exception:
+                        # Final fallback: manual conversion with optimizations
+                        result = conn.execute(query, params).fetchall()
+                        description = conn.description
+                        column_names = [desc[0] for desc in description]
+                        
+                        # Optimized record creation using list comprehension
+                        records = [dict(zip(column_names, row)) for row in result]
+                        df = pl.DataFrame(records)
+                        return df, "manual_conversion_optimized"
                 
-                result, description = await run_cpu_bound_task(execute_query)
-                
-                # ✅ FIX: Convert to list of dicts in thread pool (CPU-intensive)
-                def convert_to_records():
-                    column_names = [desc[0] for desc in description]
-                    return [dict(zip(column_names, row)) for row in result]
-                
-                records = await run_cpu_bound_task(convert_to_records)
-                
-                # ✅ FIX: Create Polars DataFrame in thread pool (CPU-intensive)
-                def create_dataframe():
-                    return pl.DataFrame(records)
-                
-                df = await run_cpu_bound_task(create_dataframe)
-                method = "duckdb_optimized_polars"
+                df, method = await run_cpu_bound_task(execute_optimized_query)
                 
                 duration_ms = (time.perf_counter() - start_time) * 1000
+                throughput = len(df) / (duration_ms / 1000) if duration_ms > 0 else 0
+                
                 logger.info(
-                    f"[HIGH-PERF-PROCESSOR] 🚀 Query executed: {len(df):,} records in {duration_ms:.2f}ms "
-                    f"using {method} pipeline"
+                    f"[HIGH-PERF-PROCESSOR] 🚀 ULTRA-FAST Query executed: {len(df):,} records in {duration_ms:.2f}ms "
+                    f"({int(throughput):,} records/sec) using {method} pipeline"
                 )
                 
                 return df
                 
             except Exception as e:
-                logger.error(f"❌ Query with Polars optimization failed: {e}")
+                logger.error(f"❌ Ultra-fast query failed: {e}")
                 raise
     
     async def stream_with_arrow_batches(

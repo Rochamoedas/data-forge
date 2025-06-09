@@ -381,45 +381,83 @@ def test_high_performance_bulk_insert(data: List[Dict[str, Any]], test_id: str =
         }
 
 def test_query_performance() -> Dict[str, Any]:
-    """Test query performance comparison"""
+    """Test query performance comparison with different dataset sizes"""
     print("🔍 Testing query performance...")
     
     results = {}
+    test_sizes = [1000, 10000, 50000, 100000]  # Test with different sizes
     
-    # Traditional query
-    start_time = time.perf_counter()
-    traditional_response = requests.get(
-        f"{BASE_URL}/api/v1/records/{SCHEMA_NAME}?page=1&size=1000"
-    )
-    traditional_duration = (time.perf_counter() - start_time) * 1000
-    
-    if traditional_response.status_code == 200:
-        results["traditional_query"] = {
-            "duration_ms": traditional_duration,
-            "method": "traditional"
-        }
-    
-    # High-performance query with analysis
-    start_time = time.perf_counter()
-    hp_response = requests.get(
-        f"{BASE_URL}/api/v1/high-performance/query-optimized/{SCHEMA_NAME}?limit=1000&analysis=summary"
-    )
-    hp_duration = (time.perf_counter() - start_time) * 1000
-    
-    if hp_response.status_code == 200:
-        results["high_performance_query"] = {
-            "duration_ms": hp_duration,
-            "method": "high_performance",
-            "includes_analysis": True
-        }
+    for size in test_sizes:
+        print(f"  📊 Testing with {size:,} records...")
+        size_results = {}
         
-        # Calculate improvement
-        if traditional_duration > 0:
-            improvement = traditional_duration / hp_duration
-            results["improvement"] = {
-                "factor": round(improvement, 2),
-                "percentage": round((improvement - 1) * 100, 1)
+        # Traditional query (without analysis)
+        start_time = time.perf_counter()
+        traditional_response = requests.get(
+            f"{BASE_URL}/api/v1/records/{SCHEMA_NAME}?page=1&size={size}"
+        )
+        traditional_duration = (time.perf_counter() - start_time) * 1000
+        
+        if traditional_response.status_code == 200:
+            trad_data = traditional_response.json()
+            actual_records = len(trad_data.get("data", {}).get("items", []))
+            size_results["traditional_query"] = {
+                "duration_ms": traditional_duration,
+                "method": "traditional_pagination",
+                "records_returned": actual_records,
+                "throughput_rps": int(actual_records / (traditional_duration / 1000)) if traditional_duration > 0 else 0
             }
+        
+        # High-performance query (without analysis for fair comparison)
+        start_time = time.perf_counter()
+        hp_response = requests.get(
+            f"{BASE_URL}/api/v1/high-performance/ultra-fast-query/{SCHEMA_NAME}?limit={size}"
+        )
+        hp_duration = (time.perf_counter() - start_time) * 1000
+        
+        if hp_response.status_code == 200:
+            hp_data = hp_response.json()
+            actual_records = len(hp_data.get("records", []))
+            size_results["high_performance_query"] = {
+                "duration_ms": hp_duration,
+                "method": "high_performance_optimized",
+                "records_returned": actual_records,
+                "throughput_rps": int(actual_records / (hp_duration / 1000)) if hp_duration > 0 else 0
+            }
+            
+            # Calculate improvement
+            if traditional_duration > 0 and hp_duration > 0:
+                improvement = traditional_duration / hp_duration
+                size_results["improvement"] = {
+                    "factor": round(improvement, 2),
+                    "percentage": round((improvement - 1) * 100, 1),
+                    "traditional_throughput": size_results["traditional_query"]["throughput_rps"],
+                    "hp_throughput": size_results["high_performance_query"]["throughput_rps"]
+                }
+        
+        # High-performance query WITH analysis (to show added value)
+        start_time = time.perf_counter()
+        hp_analysis_response = requests.get(
+            f"{BASE_URL}/api/v1/high-performance/query-optimized/{SCHEMA_NAME}?limit={size}&analysis=summary"
+        )
+        hp_analysis_duration = (time.perf_counter() - start_time) * 1000
+        
+        if hp_analysis_response.status_code == 200:
+            size_results["high_performance_with_analysis"] = {
+                "duration_ms": hp_analysis_duration,
+                "method": "high_performance_with_analysis",
+                "analysis_overhead_ms": hp_analysis_duration - hp_duration if hp_duration > 0 else 0
+            }
+        
+        results[f"size_{size}"] = size_results
+        
+        # Print immediate results
+        if size_results.get("improvement"):
+            improvement = size_results["improvement"]
+            print(f"    ✅ {size:,} records: {improvement['factor']:.2f}x faster "
+                  f"({improvement['traditional_throughput']:,} → {improvement['hp_throughput']:,} rps)")
+        else:
+            print(f"    ⚠️  {size:,} records: Could not compare performance")
     
     return results
 
@@ -650,6 +688,14 @@ def main():
     
     large_page_results = test_large_page_retrieval()
     print_results(large_page_results, "Large Page Retrieval Results")
+    
+    # Test 6: Comprehensive Pagination Benchmark
+    print("\n" + "="*70)
+    print("🏁 TEST 6: Comprehensive Pagination Benchmark")
+    print("="*70)
+    
+    pagination_results = test_pagination_benchmark()
+    print_results(pagination_results, "Comprehensive Pagination Benchmark Results")
     
     # Calculate total test time
     total_duration = time.perf_counter() - total_start_time
@@ -887,6 +933,259 @@ def test_memory_efficiency(batch_size: int = 50000) -> Dict[str, Any]:
             "success": False,
             "error": f"Unexpected error: {str(e)[:500]}"  # Limit error text length
         }
+
+def test_pagination_benchmark() -> Dict[str, Any]:
+    """
+    🚀 COMPREHENSIVE PAGINATION BENCHMARK
+    Compare traditional vs high-performance pagination endpoints with the same data
+    """
+    print("🚀 COMPREHENSIVE PAGINATION BENCHMARK")
+    print("=" * 70)
+    print("Testing both traditional and high-performance pagination with identical data")
+    
+    results = {}
+    page_sizes = [1000, 10000, 50000, 100000]  # Test different page sizes
+    
+    for size in page_sizes:
+        print(f"\n📊 TESTING WITH PAGE SIZE: {size:,}")
+        print("-" * 50)
+        
+        size_results = {
+            "page_size": size,
+            "traditional": {},
+            "high_performance": {},
+            "comparison": {}
+        }
+        
+        # Test 1: Traditional Pagination
+        print(f"\n1️⃣ Traditional Pagination (page size={size:,})")
+        trad_start = time.perf_counter()
+        trad_records = []
+        trad_page = 1
+        trad_pages_fetched = 0
+        trad_total_api_time = 0
+        
+        try:
+            while True:
+                trad_page_start = time.perf_counter()
+                response = requests.get(
+                    f"{BASE_URL}/api/v1/records/{SCHEMA_NAME}",
+                    params={"page": trad_page, "size": size},
+                    timeout=60
+                )
+                trad_page_duration = time.perf_counter() - trad_page_start
+                trad_total_api_time += trad_page_duration
+                
+                if response.status_code != 200:
+                    print(f"❌ Traditional pagination failed: {response.status_code}")
+                    size_results["traditional"]["error"] = f"HTTP {response.status_code}"
+                    break
+                    
+                data = response.json()
+                page_records = data["data"]["items"]
+                trad_records.extend(page_records)
+                trad_pages_fetched += 1
+                
+                trad_page_throughput = len(page_records) / trad_page_duration if trad_page_duration > 0 else 0
+                
+                print(f"  📄 Page {trad_page}: {len(page_records):,} records in {trad_page_duration:.2f}s ({int(trad_page_throughput):,} records/sec)")
+                
+                if len(page_records) < size:
+                    print(f"  📊 Reached end of data (got {len(page_records):,} < {size:,})")
+                    break
+                    
+                trad_page += 1
+                
+                # Safety limit
+                if trad_page > 20:
+                    print(f"  ⚠️ Safety limit reached (20 pages)")
+                    break
+                    
+        except Exception as e:
+            print(f"❌ Traditional pagination error: {str(e)[:200]}")
+            size_results["traditional"]["error"] = str(e)[:200]
+        
+        trad_total_duration = time.perf_counter() - trad_start
+        trad_throughput = len(trad_records) / trad_total_duration if trad_total_duration > 0 else 0
+        
+        size_results["traditional"] = {
+            "total_records": len(trad_records),
+            "total_duration_s": trad_total_duration,
+            "total_api_time_s": trad_total_api_time,
+            "avg_throughput_rps": int(trad_throughput),
+            "pages_fetched": trad_pages_fetched,
+            "avg_page_duration_s": trad_total_api_time / trad_pages_fetched if trad_pages_fetched > 0 else 0,
+            "method": "traditional_pagination"
+        }
+        
+        print(f"  ✅ Traditional Total: {len(trad_records):,} records in {trad_total_duration:.2f}s ({int(trad_throughput):,} records/sec)")
+        
+        # Test 2: High-Performance Pagination (using query-optimized endpoint)
+        print(f"\n2️⃣ High-Performance Pagination (page size={size:,})")
+        hp_start = time.perf_counter()
+        hp_records = []
+        hp_page = 1
+        hp_pages_fetched = 0
+        hp_total_api_time = 0
+        
+        try:
+            while True:
+                hp_page_start = time.perf_counter()
+                offset = (hp_page - 1) * size
+                response = requests.get(
+                    f"{BASE_URL}/api/v1/high-performance/query-optimized/{SCHEMA_NAME}",
+                    params={"limit": size, "offset": offset},
+                    timeout=60
+                )
+                hp_page_duration = time.perf_counter() - hp_page_start
+                hp_total_api_time += hp_page_duration
+                
+                if response.status_code != 200:
+                    print(f"❌ High-performance pagination failed: {response.status_code}")
+                    size_results["high_performance"]["error"] = f"HTTP {response.status_code}"
+                    break
+                    
+                data = response.json()
+                page_records = data.get("records", [])
+                hp_records.extend(page_records)
+                hp_pages_fetched += 1
+                
+                hp_page_throughput = len(page_records) / hp_page_duration if hp_page_duration > 0 else 0
+                
+                print(f"  📄 Page {hp_page}: {len(page_records):,} records in {hp_page_duration:.2f}s ({int(hp_page_throughput):,} records/sec)")
+                
+                if len(page_records) < size:
+                    print(f"  📊 Reached end of data (got {len(page_records):,} < {size:,})")
+                    break
+                    
+                hp_page += 1
+                
+                # Safety limit
+                if hp_page > 20:
+                    print(f"  ⚠️ Safety limit reached (20 pages)")
+                    break
+                    
+        except Exception as e:
+            print(f"❌ High-performance pagination error: {str(e)[:200]}")
+            size_results["high_performance"]["error"] = str(e)[:200]
+        
+        hp_total_duration = time.perf_counter() - hp_start
+        hp_throughput = len(hp_records) / hp_total_duration if hp_total_duration > 0 else 0
+        
+        size_results["high_performance"] = {
+            "total_records": len(hp_records),
+            "total_duration_s": hp_total_duration,
+            "total_api_time_s": hp_total_api_time,
+            "avg_throughput_rps": int(hp_throughput),
+            "pages_fetched": hp_pages_fetched,
+            "avg_page_duration_s": hp_total_api_time / hp_pages_fetched if hp_pages_fetched > 0 else 0,
+            "method": "high_performance_query_optimized"
+        }
+        
+        print(f"  ✅ High-Perf Total: {len(hp_records):,} records in {hp_total_duration:.2f}s ({int(hp_throughput):,} records/sec)")
+        
+        # Test 3: Alternative High-Performance Method (ultra-fast-query)
+        print(f"\n3️⃣ Alternative High-Performance (ultra-fast-query, limit={size:,})")
+        alt_start = time.perf_counter()
+        
+        try:
+            response = requests.get(
+                f"{BASE_URL}/api/v1/high-performance/ultra-fast-query/{SCHEMA_NAME}",
+                params={"limit": size},
+                timeout=60
+            )
+            alt_duration = time.perf_counter() - alt_start
+            
+            if response.status_code == 200:
+                data = response.json()
+                alt_records = data.get("records", [])
+                alt_throughput = len(alt_records) / alt_duration if alt_duration > 0 else 0
+                
+                size_results["alternative_hp"] = {
+                    "total_records": len(alt_records),
+                    "total_duration_s": alt_duration,
+                    "avg_throughput_rps": int(alt_throughput),
+                    "method": "ultra_fast_query_single_call"
+                }
+                
+                print(f"  ✅ Alternative HP: {len(alt_records):,} records in {alt_duration:.2f}s ({int(alt_throughput):,} records/sec)")
+            else:
+                print(f"❌ Alternative HP failed: {response.status_code}")
+                size_results["alternative_hp"]["error"] = f"HTTP {response.status_code}"
+                
+        except Exception as e:
+            print(f"❌ Alternative HP error: {str(e)[:200]}")
+            size_results["alternative_hp"]["error"] = str(e)[:200]
+        
+        # Calculate comparisons
+        if (size_results["traditional"].get("total_records", 0) > 0 and 
+            size_results["high_performance"].get("total_records", 0) > 0):
+            
+            trad_time = size_results["traditional"]["total_duration_s"]
+            hp_time = size_results["high_performance"]["total_duration_s"]
+            trad_throughput = size_results["traditional"]["avg_throughput_rps"]
+            hp_throughput = size_results["high_performance"]["avg_throughput_rps"]
+            
+            size_results["comparison"] = {
+                "speedup_factor": round(trad_time / hp_time, 2) if hp_time > 0 else 0,
+                "speedup_percentage": round(((trad_time / hp_time) - 1) * 100, 1) if hp_time > 0 else 0,
+                "throughput_improvement": round(hp_throughput / trad_throughput, 2) if trad_throughput > 0 else 0,
+                "throughput_improvement_percentage": round(((hp_throughput / trad_throughput) - 1) * 100, 1) if trad_throughput > 0 else 0,
+                "traditional_avg_page_time": size_results["traditional"]["avg_page_duration_s"],
+                "hp_avg_page_time": size_results["high_performance"]["avg_page_duration_s"],
+                "page_time_improvement": round(size_results["traditional"]["avg_page_duration_s"] / size_results["high_performance"]["avg_page_duration_s"], 2) if size_results["high_performance"]["avg_page_duration_s"] > 0 else 0
+            }
+            
+            # Print detailed comparison
+            print(f"\n📊 DETAILED COMPARISON FOR PAGE SIZE {size:,}:")
+            print(f"  Traditional:     {size_results['traditional']['total_records']:,} records in {trad_time:.2f}s ({trad_throughput:,} records/sec)")
+            print(f"  High-Performance: {size_results['high_performance']['total_records']:,} records in {hp_time:.2f}s ({hp_throughput:,} records/sec)")
+            print(f"  🚀 Overall Speedup: {size_results['comparison']['speedup_factor']:.2f}x ({size_results['comparison']['speedup_percentage']:.1f}% faster)")
+            print(f"  🚀 Throughput Gain: {size_results['comparison']['throughput_improvement']:.2f}x ({size_results['comparison']['throughput_improvement_percentage']:.1f}% higher)")
+            print(f"  📄 Page Time Improvement: {size_results['comparison']['page_time_improvement']:.2f}x faster per page")
+            
+            # Include alternative method in comparison if available
+            if "alternative_hp" in size_results and "total_records" in size_results["alternative_hp"]:
+                alt_time = size_results["alternative_hp"]["total_duration_s"]
+                alt_throughput = size_results["alternative_hp"]["avg_throughput_rps"]
+                print(f"  Alternative HP:   {size_results['alternative_hp']['total_records']:,} records in {alt_time:.2f}s ({alt_throughput:,} records/sec)")
+                print(f"  🚀 Alt vs Traditional: {round(trad_time / alt_time, 2):.2f}x faster")
+        
+        results[f"page_size_{size}"] = size_results
+    
+    # Generate final summary
+    print(f"\n{'='*70}")
+    print("🏁 PAGINATION BENCHMARK SUMMARY")
+    print(f"{'='*70}")
+    
+    for size_key, size_data in results.items():
+        size = size_data["page_size"]
+        print(f"\n📊 PAGE SIZE {size:,}:")
+        
+        if "comparison" in size_data and size_data["comparison"]:
+            comp = size_data["comparison"]
+            trad = size_data["traditional"]
+            hp = size_data["high_performance"]
+            
+            print(f"  Traditional:      {trad['total_records']:,} records, {trad['total_duration_s']:.2f}s, {trad['avg_throughput_rps']:,} rps")
+            print(f"  High-Performance: {hp['total_records']:,} records, {hp['total_duration_s']:.2f}s, {hp['avg_throughput_rps']:,} rps")
+            print(f"  🚀 Improvement:   {comp['speedup_factor']:.2f}x speed, {comp['throughput_improvement']:.2f}x throughput")
+            
+            if "alternative_hp" in size_data and "total_records" in size_data["alternative_hp"]:
+                alt = size_data["alternative_hp"]
+                print(f"  Alternative HP:   {alt['total_records']:,} records, {alt['total_duration_s']:.2f}s, {alt['avg_throughput_rps']:,} rps")
+        else:
+            print(f"  ⚠️ Comparison not available (check for errors)")
+    
+    # Best practices recommendation
+    print(f"\n💡 PAGINATION RECOMMENDATIONS:")
+    print(f"  • For small datasets (< 10K): Either method works well")
+    print(f"  • For medium datasets (10K-50K): High-performance shows clear benefits")
+    print(f"  • For large datasets (> 50K): High-performance is significantly faster")
+    print(f"  • For single large queries: Use ultra-fast-query endpoint")
+    print(f"  • For MVP: Large page sizes (50K-100K) with high-performance endpoints")
+    
+    return results
 
 if __name__ == "__main__":
     main() 

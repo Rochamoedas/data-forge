@@ -74,6 +74,81 @@ async def ultra_fast_bulk_insert(
         logger.error(f"[HIGH-PERF-API] Ultra-fast bulk insert failed: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/ultra-fast-query/{schema_name}")
+async def ultra_fast_query(
+    schema_name: str,
+    filters: Optional[str] = Query(None, description="JSON filters"),
+    limit: Optional[int] = Query(1000, description="Result limit"),
+    offset: Optional[int] = Query(0, description="Result offset for pagination")
+) -> Dict[str, Any]:
+    """
+    🚀 ULTRA-FAST querying optimized for maximum read performance
+    
+    Performance benefits:
+    - Direct DuckDB → Arrow → Polars pipeline (zero-copy when possible)
+    - No analysis overhead
+    - Optimized for large datasets
+    - Parallel query execution
+    - Memory-efficient processing
+    """
+    try:
+        # Get schema
+        schema = await container.schema_repository.get_schema_by_name(schema_name)
+        if not schema:
+            raise HTTPException(status_code=404, detail=f"Schema '{schema_name}' not found")
+        
+        # Parse filters if provided
+        parsed_filters = None
+        if filters:
+            try:
+                parsed_filters = json.loads(filters)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid JSON in filters")
+        
+        # Add offset to filters for pagination
+        effective_limit = limit + offset if offset > 0 else limit
+        
+        # Query with ultra-fast optimization (no analysis overhead)
+        start_time = time.perf_counter()
+        df = await container.high_performance_processor.query_with_polars_optimization(
+            schema=schema,
+            filters=parsed_filters,
+            limit=effective_limit
+        )
+        
+        # Apply offset if needed (more efficient than SQL OFFSET for small offsets)
+        if offset > 0:
+            df = df.slice(offset, limit)
+        
+        query_duration = (time.perf_counter() - start_time) * 1000
+        
+        # Convert to records with minimal overhead
+        records = df.to_dicts()
+        
+        # Calculate performance metrics
+        throughput = len(records) / (query_duration / 1000) if query_duration > 0 else 0
+        
+        return {
+            "success": True,
+            "schema_name": schema_name,
+            "records": records,
+            "record_count": len(records),
+            "performance_metrics": {
+                "query_duration_ms": query_duration,
+                "throughput_rps": int(throughput),
+                "optimization": "ultra_fast_duckdb_arrow_polars"
+            },
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(records)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[HIGH-PERF-API] Ultra-fast query failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @router.get("/query-optimized/{schema_name}")
 async def query_with_polars_optimization(
     schema_name: str,
