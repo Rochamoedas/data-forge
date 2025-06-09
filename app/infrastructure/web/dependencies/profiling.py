@@ -144,10 +144,6 @@ def log_repository_performance(operation_name: str, schema_name: str, metrics: D
     """
     Lightweight repository performance logging
     """
-    # Only log if not already being monitored at API level
-    if is_performance_monitoring_active():
-        return
-    
     execution_time = metrics.get('execution_time_ms', 0)
     memory_usage = metrics.get('memory_usage_mb', 0)
     cpu_usage = metrics.get('cpu_percent', 0)
@@ -170,10 +166,6 @@ def log_use_case_performance(use_case_name: str, schema_name: str, duration_ms: 
     """
     Lightweight use case performance logging
     """
-    # Only log if not already being monitored at API level
-    if is_performance_monitoring_active():
-        return
-    
     extra_details = ", ".join([f"{k}={v}" for k, v in extra_info.items()]) if extra_info else ""
     details_str = f", {extra_details}" if extra_details else ""
     
@@ -190,9 +182,6 @@ def log_bulk_operation_performance(operation_name: str, schema_name: str, record
     """
     Specialized logging for bulk operations with record count context
     """
-    if is_performance_monitoring_active():
-        return
-    
     records_per_second = int(record_count / (duration_ms / 1000)) if duration_ms > 0 else 0
     extra_details = ", ".join([f"{k}={v}" for k, v in extra_info.items()]) if extra_info else ""
     details_str = f", {extra_details}" if extra_details else ""
