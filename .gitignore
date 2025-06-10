@@ -48,9 +48,10 @@ env.bak/
 venv.bak/
 frontend/fenv
 
-# Test environment files
+# Test environment and files
 test_venv/
 .pytest_cache/
+tests/benchmarking
 
 # Logs and temp files
 *.log
@@ -89,3 +90,5 @@ docs/cursor_define_implementation_steps_sprint_2_c_1.md
 docs/cursor_define_implementation_steps_sprint_2_c_2.md
 
 docs/todo_final_plan.md
+docs/code_review_prompt.md
+no_output
