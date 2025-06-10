@@ -63,15 +63,26 @@ GET /api/v1/high-performance/query-optimized/{schema_name}
 curl "http://localhost:8080/api/v1/high-performance/query-optimized/my_schema?filters={\"field1\":\"value1\"}&analysis=summary"
 ```
 
-### 3. Arrow Batch Streaming
+### 3. Arrow Batch Streaming (`/api/v1/high-performance/stream-arrow-batches/{schema_name}`)
+
 ```http
 GET /api/v1/high-performance/stream-arrow-batches/{schema_name}
 ```
 
+This endpoint provides highly efficient, memory-managed streaming of data directly in Apache Arrow batch format.
+
 **Performance Benefits:**
-- Memory-efficient streaming
-- Arrow batch processing
-- Optimal for large datasets
+- **Memory-efficient:** Processes data in chunks, avoiding loading entire datasets into memory.
+- **Arrow Batch Processing:** Leverages the speed of Arrow for data representation and transfer.
+- **Optimal for Large Datasets:** Suitable for exporting or processing terabyte-scale tables.
+
+**Streaming Strategies:**
+The streaming mechanism has been enhanced to support different pagination strategies for optimal performance depending on the dataset size and table characteristics:
+
+- **`offset` (Default):** This is the traditional method using SQL `LIMIT` and `OFFSET` clauses. It's generally suitable for most datasets but can experience performance degradation on very large tables with high offset values.
+- **`keyset`:** This strategy uses "keyset pagination" (also known as the "seek method"). It relies on filtering by the last seen value of a unique, ordered column (typically the primary key like `id`, e.g., `WHERE id > last_processed_id ORDER BY id LIMIT batch_size`). Keyset pagination is often significantly more performant for streaming very large tables as it avoids the overhead associated with large offsets.
+
+The default streaming strategy for the application is defined by `DEFAULT_STREAMING_STRATEGY` in `app/config/duckdb_config.py`, which itself is typically derived from the `OPERATION_PROFILES["streaming"]["strategy"]` setting. Currently, the API endpoint uses this server-defined default. Future enhancements might allow specifying the strategy via a query parameter.
 
 ### 4. Parquet Export
 ```http
@@ -139,23 +150,32 @@ unique_counts = {col: df[col].n_unique() for col in df.columns}
 
 ## Configuration
 
-### DuckDB Settings
-```python
-# Optimized for high performance
-DUCKDB_PERFORMANCE_CONFIG = {
-    'memory_limit': '8GB',
-    'threads': 8,
-    'enable_object_cache': True,
-    'temp_directory': '/tmp/duckdb'
-}
-```
+### Centralized DuckDB Configuration
+
+The application now uses a centralized configuration for DuckDB settings, located in `app/config/duckdb_config.py`. This allows for fine-tuned performance adjustments and consistency across database operations.
+
+Key default settings in `DUCKDB_SETTINGS` include:
+- `threads`: e.g., 8 (Number of threads for parallel query execution)
+- `memory_limit`: e.g., '8GB' (Maximum memory DuckDB can utilize)
+- `enable_object_cache`: `True` (Caches query plan objects for faster repeated queries)
+- `temp_directory`: e.g., '/tmp/duckdb_temp' (Directory for DuckDB to spill temporary data if `memory_limit` is hit)
+- `enable_external_access`: `False` (For security, external file system access is disabled by default)
+
+**Operation Profiles:**
+The `OPERATION_PROFILES` dictionary within `app/config/duckdb_config.py` defines specific settings for different types of operations, overriding defaults where necessary:
+- `"bulk_insert"`: Typically configured with higher memory and more threads for intensive data loading.
+- `"streaming"`: May use more conservative memory settings and also defines the default `strategy` (e.g., "offset" or "keyset") for streaming operations.
+- `"query_optimized"`: Tuned for general analytical query performance.
+
+These profiles are automatically applied by relevant methods in the `HighPerformanceDataProcessor` and `DuckDBDataRepository`.
+
+**Arrow Extension Configuration:**
+The `ARROW_EXTENSION_CONFIG` section in the config file controls how the Apache Arrow extension is loaded:
+- `load_by_default`: If `True`, the system attempts to load the Arrow extension.
+- `install_if_not_found`: If `True` and loading fails, an attempt is made to install it (e.g., `INSTALL arrow;`).
 
 ### Polars Settings
-```python
-# Optimal chunk sizes
-chunk_size = 100000  # For processing
-arrow_batch_size = 50000  # For Arrow batches
-```
+While not centrally configured in `duckdb_config.py`, Polars operations within the system are optimized. Chunk sizes for processing and Arrow batch conversions are handled internally by the data processing components.
 
 ## Use Cases
 
@@ -264,11 +284,29 @@ POST /api/v1/high-performance/ultra-fast-bulk/{schema_name}
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues & Error Handling
 
-1. **Memory errors**: Reduce batch sizes or use streaming
-2. **Type conversion errors**: Check schema definitions
-3. **Performance not improved**: Verify data size and complexity
+The API provides more specific error feedback through custom exceptions, which are translated into appropriate HTTP status codes and error messages in the JSON response. Understanding these can help in troubleshooting:
+
+- **`SchemaNotFoundException`**: The schema specified in the request (e.g., `my_schema`) does not exist in the system. (HTTP 404)
+- **`RecordNotFoundException`**: A specific record requested (e.g., by ID) could not be found. (HTTP 404)
+- **`InvalidDataException`**: Data provided in the request body (e.g., for bulk insert or creating a single record) is malformed, missing required fields, or fails validation against the schema. (HTTP 400)
+- **`SchemaValidationException`**: An issue occurred related to the schema's definition or its validation during an operation. (HTTP 400 or 500)
+- **`DuplicateRecordException`**: An attempt was made to create a record that already exists, violating a unique constraint (e.g., primary key or a defined composite key). (HTTP 409)
+- **`DataProcessingError`**: An error occurred during internal data processing steps. This can include issues with CSV generation, Polars DataFrame operations, or PyArrow conversions. The error message will often contain more details about the specific step that failed. (HTTP 500)
+- **`DatabaseError`**: An error originated from the DuckDB database itself during query execution, data loading, or other database interactions. (HTTP 500)
+- **`RepositoryException`**: A general error occurred within the data repository layer, often wrapping lower-level database or processing errors if not caught more specifically. (HTTP 500)
+
+**General Troubleshooting Steps:**
+1. **Memory errors (OOM)**:
+    - For bulk operations, ensure your system has adequate memory. The configured `memory_limit` in `app/config/duckdb_config.py` for DuckDB plays a role.
+    - For streaming large datasets, this should be less common, but ensure client-side processing of streamed batches is also memory-efficient.
+    - If providing very large single JSON payloads, consider if the input can be chunked or streamed.
+2. **Type conversion errors**: Double-check that the data types in your request payload match the schema definition for the target table.
+3. **Performance not as expected**:
+    - Verify the dataset size; performance benefits are most apparent on medium to large datasets.
+    - Check the specific `OPERATION_PROFILES` in `app/config/duckdb_config.py` to understand the resource allocation for the operation type.
+    - For streaming, ensure the `keyset` strategy is active for very large tables if `offset` seems slow.
 
 ### Performance Tuning
 
