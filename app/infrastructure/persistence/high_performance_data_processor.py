@@ -14,6 +14,7 @@ import pyarrow.parquet as pq
 import duckdb
 import asyncio
 import time
+import gc
 from typing import Dict, Any, List, Optional, AsyncIterator, Union
 from pathlib import Path
 import tempfile
@@ -57,10 +58,10 @@ class HighPerformanceDataProcessor:
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
         
-        # Performance settings optimized for large datasets
-        self.chunk_size = 250000  # Larger chunk size for better performance
-        self.arrow_batch_size = 100000  # Larger Arrow batch size
-        self.csv_batch_size = 50000  # Optimal CSV batch size
+        # Performance settings optimized for high-end hardware (16GB RAM, i7 10th gen)
+        self.chunk_size = 500000  # Much larger chunk size for better performance
+        self.arrow_batch_size = 250000  # Aggressive Arrow batch size for high-end systems
+        self.csv_batch_size = 100000  # Optimal CSV batch size for bulk operations
         
     async def bulk_insert_ultra_fast(
         self, 
@@ -101,13 +102,13 @@ class HighPerformanceDataProcessor:
             # Enhanced logging for large datasets
             if total_records >= 50000:
                 logger.info(
-                    f"🚀 LARGE DATASET: Ultra-fast bulk insert completed: {total_records:,} records "
+                    f"[HIGH-PERF-PROCESSOR] 🚀 LARGE DATASET: Ultra-fast bulk insert completed: {total_records:,} records "
                     f"in {duration_ms:.2f}ms ({int(throughput):,} records/sec) "
                     f"- Polars+DuckDB optimization"
                 )
             else:
                 logger.info(
-                    f"🚀 Ultra-fast bulk insert completed: {total_records:,} records "
+                    f"[HIGH-PERF-PROCESSOR] 🚀 Ultra-fast bulk insert completed: {total_records:,} records "
                     f"in {duration_ms:.2f}ms ({int(throughput):,} records/sec)"
                 )
             
@@ -207,7 +208,7 @@ class HighPerformanceDataProcessor:
         async with self.connection_pool.acquire() as conn:
             try:
                 # Skip Arrow extension entirely - use optimized Polars → DuckDB approach
-                logger.info("Using optimized Polars → DuckDB pipeline (no Arrow extension needed)")
+                logger.info("[HIGH-PERF-PROCESSOR] Using optimized Polars → DuckDB pipeline (no Arrow extension needed)")
                 
                 # Convert Arrow to Polars DataFrame
                 df = pl.from_arrow(arrow_table)
@@ -256,10 +257,11 @@ class HighPerformanceDataProcessor:
                     # Use DuckDB COPY FROM for ultra-fast bulk insert
                     conn.execute("BEGIN TRANSACTION")
                     
-                    # Optimize DuckDB for maximum performance
+                    # Optimize DuckDB for high-end hardware (16GB RAM, i7 10th gen)
                     conn.execute("PRAGMA enable_progress_bar=false")
-                    conn.execute("PRAGMA threads=8")
-                    conn.execute("PRAGMA memory_limit='8GB'")
+                    conn.execute("PRAGMA threads=16")  # Utilize all logical cores
+                    conn.execute("PRAGMA memory_limit='12GB'")  # Use more RAM for better performance
+                    conn.execute("PRAGMA temp_directory='/tmp'")  # Use fast temp storage
                     
                     # Create temporary table for COPY operation to handle duplicates
                     temp_table = f"temp_copy_{schema.table_name}_{int(time.time())}"
@@ -303,121 +305,185 @@ class HighPerformanceDataProcessor:
         limit: Optional[int] = None
     ) -> pl.DataFrame:
         """
-        🚀 Ultra-fast querying using optimized DuckDB → Polars pipeline
+        🚀 Ultra-fast querying using optimized DuckDB → Arrow → Polars pipeline
         
         Performance benefits:
         - Vectorized query execution in DuckDB
-        - Efficient data transfer
+        - Direct Arrow integration (zero-copy when possible)
         - Fast post-processing with Polars
+        - Optimized for large datasets
         """
         start_time = time.perf_counter()
         
         async with self.connection_pool.acquire() as conn:
             try:
-                # Build optimized query
-                query = f'SELECT * FROM "{schema.table_name}"'
+                # Setup DuckDB optimizations for read performance
+                def setup_read_optimizations():
+                    try:
+                        # Optimize DuckDB for read performance
+                        conn.execute("PRAGMA enable_progress_bar=false")
+                        conn.execute("PRAGMA threads=16")  # Use all cores for parallel processing
+                        conn.execute("PRAGMA memory_limit='12GB'")  # Use more memory for better performance
+                        conn.execute("PRAGMA max_memory='12GB'")
+                        conn.execute("PRAGMA temp_directory='/tmp'")
+                        
+                        # Enable query optimizations - FIXED: Use disabled_optimizers instead of enable_optimizer
+                        conn.execute("PRAGMA disabled_optimizers=''")  # Enable all optimizers
+                        conn.execute("PRAGMA enable_profiling=false")  # Disable profiling for speed
+                        conn.execute("PRAGMA enable_progress_bar=false")
+                        
+                        # Try to install and load Arrow extension for zero-copy transfers
+                        try:
+                            conn.execute("INSTALL arrow")
+                            conn.execute("LOAD arrow")
+                            return True
+                        except Exception:
+                            logger.warning("[HIGH-PERF-PROCESSOR] Arrow extension not available, using optimized fallback")
+                            return False
+                    except Exception as e:
+                        logger.warning(f"[HIGH-PERF-PROCESSOR] Setup optimizations failed: {e}")
+                        return False
+                
+                use_arrow = await asyncio.to_thread(setup_read_optimizations)
+                
+                # Build optimized query with proper indexing hints
+                query_parts = [f'SELECT * FROM "{schema.table_name}"']
                 params = []
                 
                 if filters:
                     where_conditions = []
                     for field, value in filters.items():
+                        # Use proper parameterized queries for security and performance
                         where_conditions.append(f'"{field}" = ?')
                         params.append(value)
-                    query += f" WHERE {' AND '.join(where_conditions)}"
+                    query_parts.append(f"WHERE {' AND '.join(where_conditions)}")
+                
+                # Add ORDER BY for consistent results and better performance with indexes
+                query_parts.append("ORDER BY id")
                 
                 if limit:
-                    query += f" LIMIT {limit}"
+                    query_parts.append(f"LIMIT {limit}")
                 
-                # Use optimized DuckDB → dict → Polars pipeline (no Arrow extension needed)
-                logger.info("Using optimized DuckDB → Polars pipeline (no Arrow extension needed)")
+                query = " ".join(query_parts)
                 
-                # ✅ FIX: Execute query in thread pool to avoid blocking
-                def execute_query():
-                    result = conn.execute(query, params).fetchall()
-                    description = conn.description
-                    return result, description
+                # Execute query with the best available method
+                def execute_optimized_query():
+                    if use_arrow and limit and limit >= 10000:  # Use Arrow for larger datasets
+                        try:
+                            # 🚀 ULTRA-FAST: Direct DuckDB → Arrow → Polars pipeline
+                            logger.info("[HIGH-PERF-PROCESSOR] Using ULTRA-FAST DuckDB → Arrow → Polars pipeline")
+                            arrow_result = conn.execute(query, params).arrow()
+                            df = pl.from_arrow(arrow_result)
+                            return df, "arrow_zero_copy_optimized"
+                        except Exception as arrow_error:
+                            logger.warning(f"[HIGH-PERF-PROCESSOR] Arrow method failed: {arrow_error}, falling back to optimized method")
+                            # Fall through to optimized fallback
+                    
+                    # 🚀 OPTIMIZED FALLBACK: DuckDB → dict → Polars with optimizations
+                    logger.info("[HIGH-PERF-PROCESSOR] Using optimized DuckDB → Polars pipeline")
+                    
+                    # Use fetchdf() if available (DuckDB's optimized DataFrame method)
+                    try:
+                        # Try DuckDB's native DataFrame conversion (fastest for medium datasets)
+                        result_relation = conn.execute(query, params)
+                        df_dict = result_relation.df()  # DuckDB's optimized pandas DataFrame
+                        
+                        # Convert pandas to Polars (still faster than manual conversion)
+                        df = pl.from_pandas(df_dict)
+                        return df, "duckdb_native_dataframe_optimized"
+                    except Exception:
+                        # Final fallback: manual conversion with optimizations
+                        result = conn.execute(query, params).fetchall()
+                        description = conn.description
+                        column_names = [desc[0] for desc in description]
+                        
+                        # Optimized record creation using list comprehension
+                        records = [dict(zip(column_names, row)) for row in result]
+                        df = pl.DataFrame(records)
+                        return df, "manual_conversion_optimized"
                 
-                result, description = await run_cpu_bound_task(execute_query)
-                
-                # ✅ FIX: Convert to list of dicts in thread pool (CPU-intensive)
-                def convert_to_records():
-                    column_names = [desc[0] for desc in description]
-                    return [dict(zip(column_names, row)) for row in result]
-                
-                records = await run_cpu_bound_task(convert_to_records)
-                
-                # ✅ FIX: Create Polars DataFrame in thread pool (CPU-intensive)
-                def create_dataframe():
-                    return pl.DataFrame(records)
-                
-                df = await run_cpu_bound_task(create_dataframe)
-                method = "duckdb_optimized_polars"
+                df, method = await run_cpu_bound_task(execute_optimized_query)
                 
                 duration_ms = (time.perf_counter() - start_time) * 1000
+                throughput = len(df) / (duration_ms / 1000) if duration_ms > 0 else 0
+                
                 logger.info(
-                    f"🚀 Query executed: {len(df):,} records in {duration_ms:.2f}ms "
-                    f"using {method} pipeline"
+                    f"[HIGH-PERF-PROCESSOR] 🚀 ULTRA-FAST Query executed: {len(df):,} records in {duration_ms:.2f}ms "
+                    f"({int(throughput):,} records/sec) using {method} pipeline"
                 )
                 
                 return df
                 
             except Exception as e:
-                logger.error(f"❌ Query with Polars optimization failed: {e}")
+                logger.error(f"❌ Ultra-fast query failed: {e}")
                 raise
     
     async def stream_with_arrow_batches(
         self, 
         schema: Schema, 
-        batch_size: int = 50000
+        batch_size: int = 50000  # Increased default batch size for better performance
     ) -> AsyncIterator[pl.DataFrame]:
         """
-        🚀 Ultra-fast streaming using Arrow batches
+        🚀 Ultra-fast streaming using OFFSET-based pagination
         
         Memory efficient streaming with:
-        - Arrow batch processing
-        - Polars DataFrame chunks
+        - OFFSET-based pagination (much faster than cursor-based)
+        - Larger batch sizes for better throughput
+        - Arrow batch processing when available
         - Async iteration
         """
         async with self.connection_pool.acquire() as conn:
             try:
-                # Check if Arrow is available
-                def check_arrow():
+                # Optimize DuckDB for streaming performance
+                def setup_streaming_optimizations():
                     try:
+                        # Memory and performance optimizations for streaming
+                        conn.execute("PRAGMA enable_progress_bar=false")
+                        conn.execute("PRAGMA threads=16")  # Use all cores
+                        conn.execute("PRAGMA memory_limit='8GB'")  # Conservative memory limit for streaming
+                        conn.execute("PRAGMA max_memory='8GB'")
+                        conn.execute("PRAGMA temp_directory='/tmp'")
+                        
+                        # Try to install and load Arrow extension
                         conn.execute("INSTALL arrow; LOAD arrow;")
                         return True
                     except Exception:
                         return False
                 
-                use_arrow = await asyncio.to_thread(check_arrow)
+                use_arrow = await asyncio.to_thread(setup_streaming_optimizations)
                 if not use_arrow:
-                    logger.warning("Arrow extension not available, using traditional streaming")
+                    logger.warning("Arrow extension not available, using traditional streaming with optimizations")
                 
-                # ✅ FIX: Get total count in thread pool
+                # Get total count efficiently
                 def get_total_count():
                     count_result = conn.execute(f'SELECT COUNT(*) FROM "{schema.table_name}"').fetchone()
                     return count_result[0] if count_result else 0
                 
                 total_records = await asyncio.to_thread(get_total_count)
-                logger.info(f"🔄 Starting batch streaming: {total_records:,} total records")
+                logger.info(f"[HIGH-PERF-PROCESSOR] 🔄 Starting OFFSET-based streaming: {total_records:,} total records with batch size {batch_size:,}")
                 
-                offset = 0
                 processed = 0
+                stream_start_time = time.perf_counter()
+                batch_number = 0
                 
-                while offset < total_records:
-                    # Query batch
+                while processed < total_records:
+                    batch_number += 1
+                    
+                    # Use OFFSET-based pagination (much faster and more predictable)
                     query = f'''
                     SELECT * FROM "{schema.table_name}" 
-                    ORDER BY created_at 
-                    LIMIT {batch_size} OFFSET {offset}
+                    ORDER BY id
+                    LIMIT {batch_size} OFFSET {processed}
                     '''
                     
-                    # ✅ FIX: Execute batch query in thread pool
+                    # Execute batch query with optimizations
                     def execute_batch():
                         if use_arrow:
                             try:
+                                # Try Arrow-optimized path first
                                 arrow_batch = conn.execute(query).arrow()
                                 df_batch = pl.from_arrow(arrow_batch)
-                                return df_batch, "arrow_batch"
+                                return df_batch, "arrow_optimized"
                             except Exception:
                                 # Fallback to traditional method
                                 result = conn.execute(query).fetchall()
@@ -425,36 +491,54 @@ class HighPerformanceDataProcessor:
                                 column_names = [desc[0] for desc in description]
                                 records = [dict(zip(column_names, row)) for row in result]
                                 df_batch = pl.DataFrame(records)
-                                return df_batch, "traditional_batch"
+                                return df_batch, "traditional_fallback"
                         else:
-                            # Traditional method
+                            # Traditional method with optimizations
                             result = conn.execute(query).fetchall()
                             description = conn.description
                             column_names = [desc[0] for desc in description]
                             records = [dict(zip(column_names, row)) for row in result]
                             df_batch = pl.DataFrame(records)
-                            return df_batch, "traditional_batch"
+                            return df_batch, "traditional_optimized"
                     
                     df_batch, method = await asyncio.to_thread(execute_batch)
                     
                     if len(df_batch) == 0:
+                        logger.info(f"📦 No more records found, ending stream at batch {batch_number}")
                         break
                     
-                    processed += len(df_batch)
+                    batch_length = len(df_batch)
+                    processed += batch_length
                     
-                    logger.debug(f"📦 Streaming batch: {len(df_batch):,} records ({processed:,}/{total_records:,}) using {method}")
+                    # Calculate streaming performance
+                    elapsed_time = time.perf_counter() - stream_start_time
+                    current_throughput = processed / elapsed_time if elapsed_time > 0 else 0
+                    
+                    # Calculate progress percentage
+                    progress_pct = (processed / total_records) * 100 if total_records > 0 else 0
+                    
+                    logger.info(f"[HIGH-PERF-PROCESSOR] 🚀 Streaming batch {batch_number}: {batch_length:,} records ({processed:,}/{total_records:,} = {progress_pct:.1f}%) - {int(current_throughput):,} records/sec using {method}")
                     
                     yield df_batch
                     
-                    offset += batch_size
+                    # Memory cleanup after each batch
+                    del df_batch
+                    gc.collect()
                     
-                    # Allow other tasks to run
-                    await asyncio.sleep(0)
+                    # Small delay to allow other tasks and prevent overwhelming the system
+                    await asyncio.sleep(0.001)  # Minimal delay
+                    
+                    # Break if we got fewer records than requested (end of data)
+                    if batch_length < batch_size:
+                        logger.info(f"📦 Reached end of data at batch {batch_number}")
+                        break
                 
-                logger.info(f"✅ Batch streaming completed: {processed:,} records processed")
+                final_elapsed = time.perf_counter() - stream_start_time
+                final_throughput = processed / final_elapsed if final_elapsed > 0 else 0
+                logger.info(f"[HIGH-PERF-PROCESSOR] ✅ OFFSET-based streaming completed: {processed:,} records in {final_elapsed:.2f}s ({int(final_throughput):,} records/sec)")
                 
             except Exception as e:
-                logger.error(f"❌ Batch streaming failed: {e}")
+                logger.error(f"❌ Streaming failed: {e}")
                 raise
     
     async def export_to_parquet_optimized(
@@ -484,7 +568,7 @@ class HighPerformanceDataProcessor:
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 
                 logger.info(
-                    f"🚀 Parquet export completed: {file_size / (1024*1024):.2f}MB "
+                    f"[HIGH-PERF-PROCESSOR] 🚀 Parquet export completed: {file_size / (1024*1024):.2f}MB "
                     f"in {duration_ms:.2f}ms"
                 )
                 
@@ -577,7 +661,7 @@ class HighPerformanceDataProcessor:
         
         duration_ms = (time.perf_counter() - start_time) * 1000
         
-        logger.info(f"🚀 Data analysis completed in {duration_ms:.2f}ms using optimized method")
+        logger.info(f"[HIGH-PERF-PROCESSOR] 🚀 Data analysis completed in {duration_ms:.2f}ms using optimized method")
         
         return {
             "analysis_type": analysis_type,

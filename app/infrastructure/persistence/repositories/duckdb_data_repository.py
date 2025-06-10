@@ -19,9 +19,9 @@ import asyncio
 class DuckDBDataRepository(IDataRepository):
     def __init__(self, connection_pool: AsyncDuckDBPool):
         self.connection_pool = connection_pool
-        # Optimized for millions of rows - single high-performance configuration
-        self._ultra_batch_size = 50000  # Large batches for maximum throughput
-        self._stream_chunk_size = 10000  # Optimal streaming chunk size
+        # Optimized for high-end hardware (16GB RAM, i7 10th gen) - aggressive configuration
+        self._ultra_batch_size = 250000  # Very large batches for maximum throughput
+        self._stream_chunk_size = 100000  # Aggressive streaming chunk size for high-end systems
         self._process = psutil.Process(os.getpid())
 
     def _get_performance_metrics(self, start_time: float) -> Dict[str, float]:
@@ -76,7 +76,7 @@ class DuckDBDataRepository(IDataRepository):
         metrics = self._get_performance_metrics(start_time)
         throughput = total_records / (metrics["execution_time_ms"] / 1000) if metrics["execution_time_ms"] > 0 else 0
         
-        logger.info(f"🚀 ULTRA-FAST batch inserted {total_records} records into {schema.name} "
+        logger.info(f"[TRADITIONAL-REPO] 🚀 ULTRA-FAST batch inserted {total_records} records into {schema.name} "
                    f"in {metrics['execution_time_ms']:.2f}ms ({int(throughput)} records/second)")
         
 
@@ -164,7 +164,7 @@ class DuckDBDataRepository(IDataRepository):
                     duration_ms = (time.perf_counter() - start_time) * 1000
                     throughput = len(records) / (duration_ms / 1000) if duration_ms > 0 else 0
                     
-                    logger.info(f"🚀 ULTRA-FAST COPY inserted {len(records)} records into schema {schema.name} "
+                    logger.info(f"[TRADITIONAL-REPO] 🚀 ULTRA-FAST COPY inserted {len(records)} records into schema {schema.name} "
                                f"in {duration_ms:.2f}ms ({int(throughput)} records/second)")
                     
                 except Exception as e:

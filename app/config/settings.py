@@ -27,6 +27,7 @@ class Settings:
             'allow_unsigned_extensions': True,  # Allow local extensions
             'autoinstall_known_extensions': False,  # Disable auto-download
             'autoload_known_extensions': False,     # Disable auto-load
+            'disabled_optimizers': '',       # Enable all optimizers
         }
 
 settings = Settings()

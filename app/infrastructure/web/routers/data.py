@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 from uuid import UUID
 import json
 import time
+from datetime import datetime
+from decimal import Decimal
 
 from app.application.dto.create_data_dto import (
     CreateDataRequest, 
@@ -29,6 +31,16 @@ from app.domain.exceptions import SchemaNotFoundException, InvalidDataException,
 from app.config.logging_config import logger
 from app.config.api_limits import api_limits
 
+def json_serializer(obj):
+    """Custom JSON serializer for handling datetime and other non-serializable objects"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, Decimal):
+        return float(obj)
+    elif hasattr(obj, '__dict__'):
+        return obj.__dict__
+    else:
+        return str(obj)
 
 router = APIRouter()
 
@@ -56,13 +68,13 @@ async def create_data_record(request: CreateDataRequest) -> CreateDataResponse:
             )
         )
     except SchemaNotFoundException as e:
-        logger.warning(f"Client error - Schema not found: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidDataException as e:
-        logger.warning(f"Client error - Invalid data: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Invalid data: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Internal server error creating record: {e}")
+        logger.error(f"[TRADITIONAL-API] Internal server error creating record: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/records/bulk", response_model=CreateBulkDataResponse, status_code=status.HTTP_201_CREATED)
@@ -95,18 +107,18 @@ async def create_bulk_data_records(request: CreateBulkDataRequest) -> CreateBulk
             records=response_records
         )
     except SchemaNotFoundException as e:
-        logger.warning(f"Client error - Schema not found: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidDataException as e:
-        logger.warning(f"Client error - Invalid data: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Invalid data: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # Check if it's a constraint violation (duplicate key) - common in bulk operations
         if "Constraint Error" in str(e) and "Duplicate key" in str(e):
-            logger.warning(f"Bulk operation constraint violation: {e}")
+            logger.warning(f"[TRADITIONAL-API] Bulk operation constraint violation: {e}")
             raise HTTPException(status_code=409, detail=f"Duplicate key constraint violation: {str(e)}")
         else:
-            logger.error(f"Internal server error creating bulk records: {e}")
+            logger.error(f"[TRADITIONAL-API] Internal server error creating bulk records: {e}")
             raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}", response_model=QueryDataRecordsResponse)
@@ -178,13 +190,13 @@ async def get_records_by_schema(
             data=response_data
         )
     except SchemaNotFoundException as e:
-        logger.warning(f"Client error - Schema not found: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Schema not found: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except json.JSONDecodeError as e:
-        logger.warning(f"Client error - Invalid JSON in query parameters: {e}")
+        logger.warning(f"[TRADITIONAL-API] Client error - Invalid JSON in query parameters: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON in filters or sort parameters")
     except Exception as e:
-        logger.error(f"Internal server error retrieving records: {e}")
+        logger.error(f"[TRADITIONAL-API] Internal server error retrieving records: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/records/{schema_name}/stream")
@@ -243,7 +255,7 @@ async def stream_records_by_schema(
                         "version": record.version,
                         "composite_id": record.composite_id
                     }
-                    yield json.dumps(record_data, default=str) + "\n"
+                    yield json.dumps(record_data, default=json_serializer) + "\n"
                     record_count += 1
                 # Ensure proper stream ending
                 logger.info(f"Stream completed for {schema_name}, {record_count} records streamed")
@@ -251,7 +263,7 @@ async def stream_records_by_schema(
                 logger.error(f"Error in stream generator: {e}")
                 # Yield error as final message
                 error_data = {"error": str(e), "schema_name": schema_name}
-                yield json.dumps(error_data, default=str) + "\n"
+                yield json.dumps(error_data, default=json_serializer) + "\n"
         
         return StreamingResponse(
             generate_stream(),
