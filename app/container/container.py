@@ -29,7 +29,7 @@ class Container:
         # 🚀 High-Performance Data Processor (Polars + PyArrow + DuckDB)
         self.high_performance_processor = HighPerformanceDataProcessor(
             connection_pool=self.connection_pool,
-            max_workers=8  # Optimize for your system
+            max_workers=6  # Optimized for i7 10th Gen (6 physical cores)
         )
 
         # Use Cases

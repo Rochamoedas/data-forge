@@ -5,10 +5,10 @@ import multiprocessing
 from app.config.settings import settings
 
 class AsyncDuckDBPool:
-    def __init__(self, database_path: str, min_connections: int = 5, max_connections: int = 10):
+    def __init__(self, database_path: str, min_connections: int = 8, max_connections: int = 16):
         self.database_path = database_path
         self.min_connections = min_connections
-        self.max_connections = max_connections
+        self.max_connections = max_connections  # Increased for i7 10th Gen (12 threads)
         self._pool = asyncio.Queue(maxsize=max_connections)
         self._total_connections = 0
         self._lock = asyncio.Lock()
@@ -27,15 +27,31 @@ class AsyncDuckDBPool:
         # Create connection with config
         conn = duckdb.connect(database=self.database_path, config=perf_config)
         
-        # Get number of CPU cores
-        cpu_count = multiprocessing.cpu_count()
+        # Get number of CPU cores (i7 10th Gen = 6 cores, 12 threads)
+        cpu_count = min(multiprocessing.cpu_count(), 12)  # Cap at 12 for i7 10th Gen
         
-        # Apply optimized performance settings
-        conn.execute("SET enable_object_cache = true;")
-        conn.execute("SET memory_limit = '8GB';")  # Increased memory limit
-        conn.execute(f"SET threads = {cpu_count};")  # Use all CPU cores
-        conn.execute("SET enable_progress_bar = false;")  # Disable progress bar for better performance
-        conn.execute("SET profiling_output = 'no_output';")  # Disable profiling for better performance
+        # 🚀 ULTRA-OPTIMIZED settings for i7 10th Gen + 16GB RAM
+        conn.execute("SET enable_object_cache = true")
+        conn.execute("SET memory_limit = '12GB'")  # Use 75% of 16GB RAM
+        conn.execute(f"SET threads = {cpu_count}")  # Use all logical cores
+        conn.execute("SET enable_progress_bar = false")
+        conn.execute("SET enable_profiling = false")
+        
+        # Write optimizations
+        conn.execute("SET checkpoint_threshold = '1GB'")  # Less frequent checkpoints
+        conn.execute("SET wal_autocheckpoint = 1000000")  # Reduce WAL checkpoint frequency
+        conn.execute("SET temp_directory = '/tmp'")  # Fast temp storage
+        
+        # Query optimizations
+        conn.execute("SET disabled_optimizers = ''")  # Enable all optimizers
+        conn.execute("SET enable_object_cache = true")
+        
+        # Try to install Arrow extension for better performance
+        try:
+            conn.execute("INSTALL arrow")
+            conn.execute("LOAD arrow")
+        except Exception:
+            pass  # Arrow extension optional
         
         return conn
 

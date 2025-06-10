@@ -20,14 +20,16 @@ class Settings:
         os.makedirs(temp_dir, exist_ok=True)
         
         return {
-            'memory_limit': '8GB',           # Optimized for local use
-            'threads': 4,                    # Fixed number for stability
+            'memory_limit': '12GB',          # Optimized for 16GB RAM (75% usage)
+            'threads': 12,                   # Use all logical cores (i7 10th Gen)
             'enable_object_cache': True,
             'temp_directory': temp_dir,      # Platform-appropriate temp storage
             'allow_unsigned_extensions': True,  # Allow local extensions
             'autoinstall_known_extensions': False,  # Disable auto-download
             'autoload_known_extensions': False,     # Disable auto-load
             'disabled_optimizers': '',       # Enable all optimizers
+            'checkpoint_threshold': '1GB',   # Less frequent checkpoints for performance
+            'wal_autocheckpoint': 1000000,   # Reduce WAL checkpoint frequency
         }
 
 settings = Settings()

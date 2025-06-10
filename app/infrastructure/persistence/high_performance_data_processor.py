@@ -203,99 +203,69 @@ class HighPerformanceDataProcessor:
         return await loop.run_in_executor(self.executor, convert)
     
     async def _insert_via_arrow(self, schema: Schema, arrow_table: pa.Table) -> Dict[str, Any]:
-        """Insert Arrow table directly into DuckDB using optimized batch insert"""
+        """🚀 ULTRA-FAST: Direct Arrow → DuckDB insertion (OPTIMIZED)"""
         
         async with self.connection_pool.acquire() as conn:
             try:
-                # Skip Arrow extension entirely - use optimized Polars → DuckDB approach
-                logger.info("[HIGH-PERF-PROCESSOR] Using optimized Polars → DuckDB pipeline (no Arrow extension needed)")
+                # 🚀 CRITICAL FIX: Use direct Arrow registration instead of CSV conversion
+                logger.info("[HIGH-PERF-PROCESSOR] 🚀 Using DIRECT Arrow → DuckDB pipeline (ZERO intermediate files)")
                 
-                # Convert Arrow to Polars DataFrame
-                df = pl.from_arrow(arrow_table)
-                
-                # Use DuckDB's COPY FROM for maximum performance
-                import tempfile
-                import csv
-                import os
-                
-                # Create temporary CSV file
-                temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, 
-                                                      newline='', encoding='utf-8')
-                
-                try:
-                    # Define columns in correct order
-                    columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
+                def insert_direct():
+                    import uuid
+                    from datetime import datetime
                     
-                    # Write CSV data efficiently
-                    writer = csv.writer(temp_file, quoting=csv.QUOTE_MINIMAL)
-                    writer.writerow(columns)
+                    # Convert Arrow to Polars for easier manipulation
+                    df = pl.from_arrow(arrow_table)
                     
-                    # Convert DataFrame to records and write
-                    records_data = df.to_dicts()
-                    for record_data in records_data:
-                        import uuid
-                        from datetime import datetime
-                        
-                        row_data = [
-                            str(uuid.uuid4()),
-                            datetime.now().isoformat(),
-                            record_data.get("version", 1)
-                        ]
-                        
-                        # Add property values
-                        for prop in schema.properties:
-                            value = record_data.get(prop.name, '')
-                            if value is None:
-                                row_data.append('')
-                            else:
-                                row_data.append(str(value))
-                        
-                        writer.writerow(row_data)
+                    # Add system columns efficiently
+                    df = df.with_columns([
+                        pl.lit(None).cast(pl.Utf8).alias("id"),
+                        pl.lit(None).cast(pl.Datetime).alias("created_at"),
+                        pl.lit(1).alias("version")
+                    ])
                     
-                    temp_file.close()
+                    # Add UUIDs and timestamps efficiently
+                    enhanced_data = []
+                    for record in df.to_dicts():
+                        record["id"] = str(uuid.uuid4())
+                        record["created_at"] = datetime.now()
+                        enhanced_data.append(record)
                     
-                    # Use DuckDB COPY FROM for ultra-fast bulk insert
+                    # Create new DataFrame with system columns
+                    final_df = pl.DataFrame(enhanced_data)
+                    
+                    # Convert back to Arrow for direct insertion
+                    final_arrow = final_df.to_arrow()
+                    
+                    # 🚀 ULTRA-FAST: Direct Arrow registration and insertion
                     conn.execute("BEGIN TRANSACTION")
                     
-                    # Optimize DuckDB for high-end hardware (16GB RAM, i7 10th gen)
-                    conn.execute("PRAGMA enable_progress_bar=false")
-                    conn.execute("PRAGMA threads=16")  # Utilize all logical cores
-                    conn.execute("PRAGMA memory_limit='12GB'")  # Use more RAM for better performance
-                    conn.execute("PRAGMA temp_directory='/tmp'")  # Use fast temp storage
+                    # Optimize DuckDB for ultra-fast writes
+                    conn.execute("SET memory_limit = '12GB'")
+                    conn.execute("SET threads = 12")
+                    conn.execute("SET enable_progress_bar = false")
+                    conn.execute("SET checkpoint_threshold = '1GB'")
+                    conn.execute("SET wal_autocheckpoint = 0")
                     
-                    # Create temporary table for COPY operation to handle duplicates
-                    temp_table = f"temp_copy_{schema.table_name}_{int(time.time())}"
-                    create_temp_sql = f'CREATE TEMPORARY TABLE "{temp_table}" AS SELECT * FROM "{schema.table_name}" LIMIT 0'
-                    conn.execute(create_temp_sql)
+                    # Register Arrow table as virtual table
+                    conn.register("temp_arrow_insert", final_arrow)
                     
-                    # Ultra-fast COPY FROM CSV to temporary table
-                    copy_sql = f"""
-                        COPY "{temp_table}" FROM '{temp_file.name}' 
-                        (FORMAT CSV, HEADER true, DELIMITER ',', QUOTE '"', ENCODING 'utf-8', IGNORE_ERRORS false)
-                    """
-                    conn.execute(copy_sql)
-                    
-                    # Insert from temp table with duplicate handling (like traditional method)
-                    insert_sql = f'INSERT OR IGNORE INTO "{schema.table_name}" SELECT * FROM "{temp_table}"'
+                    # Direct insert from Arrow table (fastest possible method)
+                    insert_sql = f'INSERT OR IGNORE INTO "{schema.table_name}" SELECT * FROM temp_arrow_insert'
                     conn.execute(insert_sql)
-                    
-                    # Clean up temp table
-                    conn.execute(f'DROP TABLE "{temp_table}"')
                     
                     conn.execute("COMMIT")
                     
-                    return {"rows_inserted": len(arrow_table)}
+                    # Clean up
+                    conn.unregister("temp_arrow_insert")
                     
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(temp_file.name):
-                        try:
-                            os.unlink(temp_file.name)
-                        except Exception as e:
-                            logger.warning(f"Failed to cleanup temp file: {e}")
+                    return {"rows_inserted": len(arrow_table)}
+                
+                return await asyncio.to_thread(insert_direct)
                 
             except Exception as e:
                 conn.execute("ROLLBACK")
+                logger.error(f"❌ Direct Arrow insertion failed: {e}")
                 raise e
     
     async def query_with_polars_optimization(
@@ -366,41 +336,30 @@ class HighPerformanceDataProcessor:
                 
                 query = " ".join(query_parts)
                 
-                # Execute query with the best available method
+                # 🚀 ULTRA-OPTIMIZED: Execute query with best method
                 def execute_optimized_query():
-                    if use_arrow and limit and limit >= 10000:  # Use Arrow for larger datasets
-                        try:
-                            # 🚀 ULTRA-FAST: Direct DuckDB → Arrow → Polars pipeline
-                            logger.info("[HIGH-PERF-PROCESSOR] Using ULTRA-FAST DuckDB → Arrow → Polars pipeline")
-                            arrow_result = conn.execute(query, params).arrow()
-                            df = pl.from_arrow(arrow_result)
-                            return df, "arrow_zero_copy_optimized"
-                        except Exception as arrow_error:
-                            logger.warning(f"[HIGH-PERF-PROCESSOR] Arrow method failed: {arrow_error}, falling back to optimized method")
-                            # Fall through to optimized fallback
-                    
-                    # 🚀 OPTIMIZED FALLBACK: DuckDB → dict → Polars with optimizations
-                    logger.info("[HIGH-PERF-PROCESSOR] Using optimized DuckDB → Polars pipeline")
-                    
-                    # Use fetchdf() if available (DuckDB's optimized DataFrame method)
                     try:
-                        # Try DuckDB's native DataFrame conversion (fastest for medium datasets)
-                        result_relation = conn.execute(query, params)
-                        df_dict = result_relation.df()  # DuckDB's optimized pandas DataFrame
-                        
-                        # Convert pandas to Polars (still faster than manual conversion)
-                        df = pl.from_pandas(df_dict)
-                        return df, "duckdb_native_dataframe_optimized"
-                    except Exception:
-                        # Final fallback: manual conversion with optimizations
-                        result = conn.execute(query, params).fetchall()
-                        description = conn.description
-                        column_names = [desc[0] for desc in description]
-                        
-                        # Optimized record creation using list comprehension
-                        records = [dict(zip(column_names, row)) for row in result]
-                        df = pl.DataFrame(records)
-                        return df, "manual_conversion_optimized"
+                        # Method 1: Direct Arrow (fastest for all sizes with modern DuckDB)
+                        logger.info("[HIGH-PERF-PROCESSOR] 🚀 Using DIRECT DuckDB → Arrow → Polars pipeline")
+                        arrow_result = conn.execute(query, params).arrow()
+                        df = pl.from_arrow(arrow_result)
+                        return df, "arrow_direct_optimized"
+                    except Exception as arrow_error:
+                        logger.warning(f"[HIGH-PERF-PROCESSOR] Arrow method failed: {arrow_error}, using pandas fallback")
+                        try:
+                            # Method 2: DuckDB native DataFrame (fast)
+                            pandas_df = conn.execute(query, params).df()
+                            df = pl.from_pandas(pandas_df)
+                            return df, "pandas_conversion_optimized"
+                        except Exception:
+                            # Method 3: Manual conversion (reliable fallback)
+                            logger.warning("[HIGH-PERF-PROCESSOR] Using manual conversion fallback")
+                            result = conn.execute(query, params).fetchall()
+                            columns = [desc[0] for desc in conn.description]
+                            # Optimized record creation
+                            records = [dict(zip(columns, row)) for row in result]
+                            df = pl.DataFrame(records)
+                            return df, "manual_conversion_fallback"
                 
                 df, method = await run_cpu_bound_task(execute_optimized_query)
                 
