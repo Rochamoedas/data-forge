@@ -78,6 +78,8 @@ curl "http://localhost:8080/api/v1/records/well_production?page=1&size=100&filte
 }
 ```
 
+**Performance Recommendation:** This endpoint is designed for high performance. For querying large datasets or when optimal performance is critical, its design leverages efficient backend processing. Refer to the High-Performance Data Guide for more details on the underlying optimizations.
+
 ### GET /records/{schema_name}/stream
 🚀 **High-Performance Streaming** for large datasets
 
@@ -96,6 +98,8 @@ curl "http://localhost:8080/api/v1/records/well_production/stream?limit=5000&fil
 {"id": "uuid1", "schema_name": "well_production", "data": {...}, "created_at": "2024-01-15T10:30:00Z", "version": 1}
 {"id": "uuid2", "schema_name": "well_production", "data": {...}, "created_at": "2024-01-15T10:30:00Z", "version": 1}
 ```
+
+**Performance Recommendation:** This streaming endpoint is specifically designed for speed and efficiency when dealing with large result sets. For understanding the full capabilities and optimizations, please consult the High-Performance Data Guide.
 
 ### GET /records/{schema_name}/count
 Get record count with optional filtering
@@ -219,6 +223,8 @@ Create single record
   ]
 }
 ```
+
+**Note on Performance and Return Values:** This endpoint has been internally optimized to leverage the high-performance data processing engine for significantly faster bulk insertions. As a result of this optimization, the response may not include the full list of created `DataRecord` objects, focusing instead on processing speed and metrics. For detailed performance characteristics, please refer to the High-Performance Data Guide.
 
 ---
 

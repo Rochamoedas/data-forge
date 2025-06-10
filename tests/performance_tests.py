@@ -98,7 +98,11 @@ def measure_time_pytest(func):
 
 @measure_time_pytest
 def test_bulk_insert_100k():
-    """Test bulk insertion of 100K records and measure time"""
+    """Test bulk insertion of 100K records via the /api/v1/records/bulk endpoint.
+    This endpoint is now optimized using the HighPerformanceDataProcessor,
+    and this test measures its performance characteristics.
+    """
+    print("\nBenchmarking optimized bulk insert endpoint (POST /api/v1/records/bulk) which now uses HighPerformanceDataProcessor...")
     # Stream all records from the file
     records = []
     with open(MOCKED_RESPONSE_FILE, 'rb') as f:

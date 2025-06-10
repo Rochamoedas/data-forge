@@ -38,7 +38,7 @@ class Container:
             schema_repository=self.schema_repository
         )
         self.create_bulk_data_records_use_case = CreateBulkDataRecordsUseCase(
-            data_repository=self.data_repository,
+            high_performance_processor=self.high_performance_processor, # Changed from self.data_repository
             schema_repository=self.schema_repository
         )
         self.get_data_record_use_case = GetDataRecordUseCase(

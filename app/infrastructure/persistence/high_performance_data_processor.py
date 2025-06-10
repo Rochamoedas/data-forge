@@ -17,16 +17,16 @@ import time
 import gc
 from typing import Dict, Any, List, Optional, AsyncIterator, Union
 from pathlib import Path
-import tempfile
-import os
+import uuid # Added import
+from datetime import datetime, timezone # Added import
 from concurrent.futures import ThreadPoolExecutor
 import connectorx as cx
 import json
 
 from app.domain.entities.schema import Schema
-from app.domain.entities.data_record import DataRecord
 from app.config.logging_config import logger
 from app.infrastructure.persistence.duckdb.connection_pool import AsyncDuckDBPool
+from app.config.settings import settings
 
 
 async def run_cpu_bound_task(func, *args, **kwargs):
@@ -177,17 +177,24 @@ class HighPerformanceDataProcessor:
             
             # Add system columns
             lazy_df = lazy_df.with_columns([
-                pl.lit(None).cast(pl.Utf8).alias("id"),  # Will be generated in DuckDB
-                pl.lit(None).cast(pl.Datetime).alias("created_at"),  # Will be set in DuckDB
-                pl.lit(1).alias("version")
+                pl.col(schema.primary_key[0] if schema.primary_key and schema.primary_key[0] in df.columns else df.columns[0]).map_elements(lambda _: str(uuid.uuid4()), return_dtype=pl.Utf8).alias("id"),
+                pl.lit(datetime.now(timezone.utc)).cast(pl.Datetime(time_unit='us', time_zone='UTC')).alias("created_at"),
+                pl.lit(1).cast(pl.Int64).alias("version")
             ])
             
             # Apply deduplication if schema has primary key
             if schema.primary_key:
-                lazy_df = lazy_df.unique(subset=schema.primary_key, keep="first")
+                # Ensure primary key columns exist before attempting unique
+                valid_primary_keys = [pk_col for pk_col in schema.primary_key if pk_col in lazy_df.columns]
+                if valid_primary_keys:
+                    lazy_df = lazy_df.unique(subset=valid_primary_keys, keep="first")
             
             # Collect the lazy DataFrame (execute all operations)
-            return lazy_df.collect()
+            df_transformed = lazy_df.collect()
+
+            # Ensure final column order
+            final_columns_order = ["id", "created_at", "version"] + [p.name for p in schema.properties if p.name in df_transformed.columns]
+            return df_transformed.select(final_columns_order)
         
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, transform)
@@ -203,100 +210,53 @@ class HighPerformanceDataProcessor:
         return await loop.run_in_executor(self.executor, convert)
     
     async def _insert_via_arrow(self, schema: Schema, arrow_table: pa.Table) -> Dict[str, Any]:
-        """Insert Arrow table directly into DuckDB using optimized batch insert"""
-        
+        """Insert Arrow table directly into DuckDB using its native Arrow support."""
+
         async with self.connection_pool.acquire() as conn:
             try:
-                # Skip Arrow extension entirely - use optimized Polars → DuckDB approach
-                logger.info("[HIGH-PERF-PROCESSOR] Using optimized Polars → DuckDB pipeline (no Arrow extension needed)")
+                temp_table_name = f"arrow_insert_{schema.table_name}_{int(time.time())}"
+                conn.register(temp_table_name, arrow_table)
                 
-                # Convert Arrow to Polars DataFrame
-                df = pl.from_arrow(arrow_table)
+                arrow_columns = arrow_table.column_names
                 
-                # Use DuckDB's COPY FROM for maximum performance
-                import tempfile
-                import csv
-                import os
+                # Define the order of columns for insertion into the database table
+                # This order must match the target table structure.
+                db_target_columns_ordered = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
                 
-                # Create temporary CSV file
-                temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, 
-                                                      newline='', encoding='utf-8')
+                # Create the string for column names in the INSERT INTO clause (e.g., "id", "created_at", ...)
+                db_columns_str = ", ".join([f'"{col}"' for col in db_target_columns_ordered])
                 
-                try:
-                    # Define columns in correct order
-                    columns = ["id", "created_at", "version"] + [prop.name for prop in schema.properties]
-                    
-                    # Write CSV data efficiently
-                    writer = csv.writer(temp_file, quoting=csv.QUOTE_MINIMAL)
-                    writer.writerow(columns)
-                    
-                    # Convert DataFrame to records and write
-                    records_data = df.to_dicts()
-                    for record_data in records_data:
-                        import uuid
-                        from datetime import datetime
-                        
-                        row_data = [
-                            str(uuid.uuid4()),
-                            datetime.now().isoformat(),
-                            record_data.get("version", 1)
-                        ]
-                        
-                        # Add property values
-                        for prop in schema.properties:
-                            value = record_data.get(prop.name, '')
-                            if value is None:
-                                row_data.append('')
-                            else:
-                                row_data.append(str(value))
-                        
-                        writer.writerow(row_data)
-                    
-                    temp_file.close()
-                    
-                    # Use DuckDB COPY FROM for ultra-fast bulk insert
-                    conn.execute("BEGIN TRANSACTION")
-                    
-                    # Optimize DuckDB for high-end hardware (16GB RAM, i7 10th gen)
-                    conn.execute("PRAGMA enable_progress_bar=false")
-                    conn.execute("PRAGMA threads=16")  # Utilize all logical cores
-                    conn.execute("PRAGMA memory_limit='12GB'")  # Use more RAM for better performance
-                    conn.execute("PRAGMA temp_directory='/tmp'")  # Use fast temp storage
-                    
-                    # Create temporary table for COPY operation to handle duplicates
-                    temp_table = f"temp_copy_{schema.table_name}_{int(time.time())}"
-                    create_temp_sql = f'CREATE TEMPORARY TABLE "{temp_table}" AS SELECT * FROM "{schema.table_name}" LIMIT 0'
-                    conn.execute(create_temp_sql)
-                    
-                    # Ultra-fast COPY FROM CSV to temporary table
-                    copy_sql = f"""
-                        COPY "{temp_table}" FROM '{temp_file.name}' 
-                        (FORMAT CSV, HEADER true, DELIMITER ',', QUOTE '"', ENCODING 'utf-8', IGNORE_ERRORS false)
-                    """
-                    conn.execute(copy_sql)
-                    
-                    # Insert from temp table with duplicate handling (like traditional method)
-                    insert_sql = f'INSERT OR IGNORE INTO "{schema.table_name}" SELECT * FROM "{temp_table}"'
-                    conn.execute(insert_sql)
-                    
-                    # Clean up temp table
-                    conn.execute(f'DROP TABLE "{temp_table}"')
-                    
-                    conn.execute("COMMIT")
-                    
-                    return {"rows_inserted": len(arrow_table)}
-                    
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(temp_file.name):
-                        try:
-                            os.unlink(temp_file.name)
-                        except Exception as e:
-                            logger.warning(f"Failed to cleanup temp file: {e}")
+                # Create the string for selecting columns from the Arrow table.
+                # These columns MUST be selected in the same order as db_target_columns_ordered.
+                # We rely on _apply_polars_transformations to have produced an Arrow table
+                # with columns named appropriately and available.
+                select_cols_from_arrow_str = ", ".join([f'"{col}"' for col in db_target_columns_ordered])
+
+                logger.info(f"[HIGH-PERF-PROCESSOR] Inserting {len(arrow_table)} records via direct Arrow to DuckDB method for schema {schema.name}")
+
+                conn.execute("BEGIN TRANSACTION")
+
+                conn.execute("PRAGMA enable_progress_bar=false")
+                conn.execute(f"PRAGMA threads={self.max_workers}")
+                conn.execute(f"PRAGMA memory_limit='{settings.DUCKDB_MEMORY_LIMIT_HIGH_PERF_WRITE}'")
+
+                insert_sql = f"""
+                    INSERT OR IGNORE INTO "{schema.table_name}" ({db_columns_str})
+                    SELECT {select_cols_from_arrow_str} FROM {temp_table_name}
+                """
+                conn.execute(insert_sql)
+
+                conn.execute("COMMIT")
+
+                # conn.unregister(temp_table_name) # Optional: good practice but often auto-cleaned.
+
+                return {"rows_inserted": len(arrow_table)}
                 
             except Exception as e:
-                conn.execute("ROLLBACK")
-                raise e
+                if conn:
+                    conn.execute("ROLLBACK")
+                logger.error(f"Direct Arrow insert failed for schema {schema.name}: {e}")
+                raise
     
     async def query_with_polars_optimization(
         self, 
@@ -322,9 +282,9 @@ class HighPerformanceDataProcessor:
                     try:
                         # Optimize DuckDB for read performance
                         conn.execute("PRAGMA enable_progress_bar=false")
-                        conn.execute("PRAGMA threads=16")  # Use all cores for parallel processing
-                        conn.execute("PRAGMA memory_limit='12GB'")  # Use more memory for better performance
-                        conn.execute("PRAGMA max_memory='12GB'")
+                        conn.execute(f"PRAGMA threads={self.max_workers}")
+                        conn.execute(f"PRAGMA memory_limit='{settings.DUCKDB_MEMORY_LIMIT_HIGH_PERF_READ}'")
+                        conn.execute(f"PRAGMA max_memory='{settings.DUCKDB_MEMORY_LIMIT_HIGH_PERF_READ}'")
                         conn.execute("PRAGMA temp_directory='/tmp'")
                         
                         # Enable query optimizations - FIXED: Use disabled_optimizers instead of enable_optimizer
@@ -368,40 +328,40 @@ class HighPerformanceDataProcessor:
                 
                 # Execute query with the best available method
                 def execute_optimized_query():
-                    if use_arrow and limit and limit >= 10000:  # Use Arrow for larger datasets
+                    if use_arrow:  # Attempt Arrow path if the extension is loaded
                         try:
-                            # 🚀 ULTRA-FAST: Direct DuckDB → Arrow → Polars pipeline
-                            logger.info("[HIGH-PERF-PROCESSOR] Using ULTRA-FAST DuckDB → Arrow → Polars pipeline")
+                            logger.info("[HIGH-PERF-PROCESSOR] Using DuckDB → Arrow → Polars pipeline")
                             arrow_result = conn.execute(query, params).arrow()
+                            # Convert to Polars DataFrame directly from Arrow result
                             df = pl.from_arrow(arrow_result)
-                            return df, "arrow_zero_copy_optimized"
+                            return df, "arrow_to_polars_optimized"
                         except Exception as arrow_error:
-                            logger.warning(f"[HIGH-PERF-PROCESSOR] Arrow method failed: {arrow_error}, falling back to optimized method")
-                            # Fall through to optimized fallback
+                            logger.warning(f"[HIGH-PERF-PROCESSOR] DuckDB → Arrow → Polars pipeline failed: {arrow_error}. Falling back.")
+                            # Fall through to the next best optimized fallback
                     
-                    # 🚀 OPTIMIZED FALLBACK: DuckDB → dict → Polars with optimizations
-                    logger.info("[HIGH-PERF-PROCESSOR] Using optimized DuckDB → Polars pipeline")
-                    
-                    # Use fetchdf() if available (DuckDB's optimized DataFrame method)
+                    # Fallback 1: DuckDB's native DataFrame conversion (to Pandas, then Polars)
+                    logger.info("[HIGH-PERF-PROCESSOR] Using fallback: DuckDB → Pandas DataFrame → Polars pipeline")
                     try:
-                        # Try DuckDB's native DataFrame conversion (fastest for medium datasets)
                         result_relation = conn.execute(query, params)
-                        df_dict = result_relation.df()  # DuckDB's optimized pandas DataFrame
-                        
-                        # Convert pandas to Polars (still faster than manual conversion)
-                        df = pl.from_pandas(df_dict)
-                        return df, "duckdb_native_dataframe_optimized"
-                    except Exception:
-                        # Final fallback: manual conversion with optimizations
-                        result = conn.execute(query, params).fetchall()
-                        description = conn.description
-                        column_names = [desc[0] for desc in description]
-                        
-                        # Optimized record creation using list comprehension
-                        records = [dict(zip(column_names, row)) for row in result]
-                        df = pl.DataFrame(records)
-                        return df, "manual_conversion_optimized"
-                
+                        pd_df = result_relation.df()  # DuckDB's optimized pandas DataFrame
+                        df = pl.from_pandas(pd_df) # Convert pandas to Polars
+                        return df, "duckdb_pandas_to_polars_fallback"
+                    except Exception as pandas_fallback_error:
+                        logger.warning(f"[HIGH-PERF-PROCESSOR] DuckDB → Pandas DataFrame → Polars fallback failed: {pandas_fallback_error}. Falling back to manual conversion.")
+                        # Fall through to the final manual fallback
+
+                    # Fallback 2: Manual conversion (fetchall and create Polars DataFrame)
+                    logger.info("[HIGH-PERF-PROCESSOR] Using fallback: Manual dict conversion → Polars pipeline")
+                    # Re-execute the query for fetchall() as the relation might have been consumed or in a different state
+                    result_for_manual = conn.execute(query, params)
+                    description = result_for_manual.description # Ensure description is fetched from the correct execution
+                    rows = result_for_manual.fetchall()
+                    column_names = [desc[0] for desc in description]
+
+                    records = [dict(zip(column_names, row)) for row in rows]
+                    df = pl.DataFrame(records)
+                    return df, "manual_conversion_fallback"
+
                 df, method = await run_cpu_bound_task(execute_optimized_query)
                 
                 duration_ms = (time.perf_counter() - start_time) * 1000
@@ -439,9 +399,9 @@ class HighPerformanceDataProcessor:
                     try:
                         # Memory and performance optimizations for streaming
                         conn.execute("PRAGMA enable_progress_bar=false")
-                        conn.execute("PRAGMA threads=16")  # Use all cores
-                        conn.execute("PRAGMA memory_limit='8GB'")  # Conservative memory limit for streaming
-                        conn.execute("PRAGMA max_memory='8GB'")
+                        conn.execute(f"PRAGMA threads={self.max_workers}")
+                        conn.execute(f"PRAGMA memory_limit='{settings.DUCKDB_MEMORY_LIMIT_HIGH_PERF_STREAM}'")
+                        conn.execute(f"PRAGMA max_memory='{settings.DUCKDB_MEMORY_LIMIT_HIGH_PERF_STREAM}'")
                         conn.execute("PRAGMA temp_directory='/tmp'")
                         
                         # Try to install and load Arrow extension

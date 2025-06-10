@@ -8,6 +8,15 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "./data/data.duckdb")
 
+    # DuckDB PRAGMA settings
+    DUCKDB_MEMORY_LIMIT_HIGH_PERF_READ: str = "10GB"
+    DUCKDB_MEMORY_LIMIT_HIGH_PERF_WRITE: str = "10GB"
+    DUCKDB_MEMORY_LIMIT_HIGH_PERF_STREAM: str = "8GB"
+    DUCKDB_MEMORY_LIMIT_REPO: str = "6GB"
+    # For DUCKDB_DEFAULT_THREADS, 0 typically means DuckDB will auto-detect (usually os.cpu_count()).
+    # This is a common and often optimal default.
+    DUCKDB_DEFAULT_THREADS: int = 0
+
     @property
     def DUCKDB_PERFORMANCE_CONFIG(self):
         # Get platform-appropriate temp directory

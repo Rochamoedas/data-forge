@@ -2,13 +2,21 @@
 
 ## Overview
 
+The endpoints and processing capabilities described in this guide are the **recommended solution** for all performance-sensitive operations, including bulk data ingestion and complex queries on large datasets. They leverage advanced libraries like Polars, PyArrow, and DuckDB with optimized data paths to deliver maximum throughput and efficiency.
+
 Your application now leverages the powerful combination of **Polars**, **PyArrow**, and **DuckDB** for maximum data processing performance. This integration provides:
 
-- **10-100x faster** bulk operations
+- **Significantly faster read and write operations.**
+- **Reduced memory footprint for large operations.**
+- **Direct utilization of columnar data processing and vectorized execution.**
+- **10-100x faster** bulk operations (a more specific example of the above)
 - **Zero-copy** data transfers
-- **Memory-efficient** processing
+- **Memory-efficient** processing (reiterates a key benefit)
 - **Vectorized** analytical queries
 - **Columnar** data format optimization
+
+## Bulk Operations Return Values
+When using high-performance endpoints (or traditional endpoints now accelerated by the high-performance engine, like the main bulk data creation use case), the primary focus is on maximizing ingestion speed. As such, responses for bulk creation operations typically provide performance metrics and success status, but may not return detailed lists of every created record object to minimize overhead. This behavior ensures the fastest possible data processing.
 
 ## Architecture
 

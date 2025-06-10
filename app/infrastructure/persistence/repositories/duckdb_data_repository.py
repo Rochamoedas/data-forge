@@ -13,6 +13,7 @@ from app.infrastructure.persistence.duckdb.connection_pool import AsyncDuckDBPoo
 from app.infrastructure.persistence.duckdb.query_builder import DuckDBQueryBuilder
 from app.application.dto.query_dto import DataQueryRequest
 from app.config.logging_config import logger
+from app.config.settings import settings
 
 import asyncio
 
@@ -113,15 +114,14 @@ class DuckDBDataRepository(IDataRepository):
                 row_data.append(record.created_at.isoformat())
                 row_data.append(str(record.version))
                 
-                # Process schema properties with proper encoding
+                # Process schema properties
                 for prop in schema.properties:
-                    value = record.data.get(prop.name, '')
+                    value = record.data.get(prop.name, '') # Get value, default to empty string if not present
                     if value is None:
-                        row_data.append('')
-                    elif isinstance(value, str):
-                        # Ensure proper UTF-8 encoding for strings
-                        row_data.append(value.encode('utf-8', errors='replace').decode('utf-8'))
+                        row_data.append('') # Write None as empty string
                     else:
+                        # Convert value to string. The csv.writer will handle encoding
+                        # based on the file's open mode (which is utf-8).
                         row_data.append(str(value))
                 
                 writer.writerow(row_data)
@@ -135,9 +135,9 @@ class DuckDBDataRepository(IDataRepository):
                     
                     # Optimize DuckDB for maximum performance with millions of rows
                     conn.execute("PRAGMA enable_progress_bar=false")
-                    conn.execute("PRAGMA threads=8")
-                    conn.execute("PRAGMA memory_limit='8GB'")
-                    conn.execute("PRAGMA max_memory='8GB'")
+                    conn.execute(f"PRAGMA threads={settings.DUCKDB_DEFAULT_THREADS}")
+                    conn.execute(f"PRAGMA memory_limit='{settings.DUCKDB_MEMORY_LIMIT_REPO}'")
+                    conn.execute(f"PRAGMA max_memory='{settings.DUCKDB_MEMORY_LIMIT_REPO}'")
                     
                     # Create temporary table for COPY operation
                     temp_table = f"temp_copy_{schema.table_name}_{int(time.time())}"
