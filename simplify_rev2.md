@@ -115,43 +115,32 @@ app/container/
 ### Phase 1: Core Architecture Consolidation
 
 #### Files to Remove
-```
+
+```text
 app/application/dto/               # Remove all DTOs
 ├── create_data_dto.py            ❌ DELETE
-├── data_dto.py                   ❌ DELETE  
+├── data_dto.py                   ❌ DELETE
 ├── query_dto.py                  ❌ DELETE
 ├── query_request_dto.py          ❌ DELETE
 └── schema_dto.py                 ❌ DELETE
 
-app/application/use_cases/         # Remove traditional use cases, KEEP arrow-performance
+app/application/use_cases/         # Remove traditional use cases (arrow-performance use case is kept)
 ├── create_data_record.py         ❌ DELETE
 ├── create_bulk_data_records.py   ❌ DELETE
-├── create_ultra_fast_bulk_data.py ✅ KEEP (Required for arrow-performance endpoints)
 ├── get_data_record.py            ❌ DELETE
 └── query_data_records.py         ❌ DELETE
-
-app/application/command_handlers/  # KEEP command handlers for arrow-performance
-└── bulk_data_command_handlers.py ✅ KEEP (Required for CQRS in arrow-performance)
-
-app/application/commands/          # KEEP CQRS commands for arrow-performance
-└── bulk_data_commands.py         ✅ KEEP (Required for CQRS pattern)
-
-app/container/                     # Remove DI container
-└── container.py                  ❌ DELETE
 
 app/infrastructure/web/dependencies/ # Remove dependencies
 └── common.py                     ❌ DELETE
 
-app/infrastructure/web/routers/    # Consolidate routers, KEEP arrow-performance  
+app/infrastructure/web/routers/    # Remove other routers (arrow-performance router is kept)
 ├── data.py                       ❌ DELETE
-├── high_performance_data.py      ❌ DELETE  
-└── arrow_performance_data.py     ✅ KEEP (Required for new arrow-performance endpoints)
+└── high_performance_data.py      ❌ DELETE
 
-app/infrastructure/persistence/
-├── arrow_bulk_operations.py      ✅ KEEP (Core service for arrow-performance)
+app/infrastructure/persistence/    # Remove other persistence layers (arrow_bulk_operations is kept)
 └── high_performance_data_processor.py ❌ DELETE
 
-app/domain/services/               # Remove domain services
+app/domain/services/               # Remove other domain services (performance_monitoring is kept)
 └── data_management.py            ❌ DELETE
 ```
 

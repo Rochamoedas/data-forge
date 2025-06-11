@@ -15,7 +15,7 @@ import uuid
 
 # --- CONFIGURABLE PARAMETERS ---
 BASE_URL = "http://localhost:8080/api/v1"  # Your API base URL
-TEST_DATA_SIZE = 5_000_000  # Number of test records to generate
+TEST_DATA_SIZE = 100_000  # Number of test records to generate
 SCHEMA_NAME = "well_production"  # Schema to test with
 
 # --- Test Data Generation ---
