@@ -1,60 +1,82 @@
 import asyncio
 from contextlib import asynccontextmanager
 import duckdb
-import multiprocessing
 from app.config.settings import settings
+from app.config.logging_config import logger
 
 class AsyncDuckDBPool:
-    def __init__(self, database_path: str, min_connections: int = 5, max_connections: int = 10):
-        self.database_path = database_path
-        self.min_connections = min_connections
-        self.max_connections = max_connections
-        self._pool = asyncio.Queue(maxsize=max_connections)
-        self._total_connections = 0
-        self._lock = asyncio.Lock()
+    _connection = None
+    _lock = asyncio.Lock()
+
+    def __init__(self, **kwargs):
+        # The connection parameters are now managed by this pool.
+        pass
 
     async def initialize(self):
+        # This will now create the connection.
         async with self._lock:
-            for _ in range(self.min_connections):
-                conn = await self._create_connection()
-                await self._pool.put(conn)
-                self._total_connections += 1
+            if self._connection is None:
+                logger.info(f"Initializing DuckDB connection to database: {settings.DATABASE_PATH}")
+                
+                full_config = settings.DUCKDB_PERFORMANCE_CONFIG
+                
+                # Config keys that MUST be set at connection time
+                startup_keys = {
+                    'allow_unsigned_extensions',
+                    'autoinstall_known_extensions',
+                    'autoload_known_extensions',
+                    'temp_directory'
+                }
+                
+                # Separate configs
+                startup_config = {k: v for k, v in full_config.items() if k in startup_keys}
+                runtime_config = {k: v for k, v in full_config.items() if k not in startup_keys}
 
-    async def _create_connection(self):
-        # Get the performance config
-        perf_config = settings.DUCKDB_PERFORMANCE_CONFIG
-        
-        # Create connection with config
-        conn = duckdb.connect(database=self.database_path, config=perf_config)
-        
-        # Get number of CPU cores
-        cpu_count = multiprocessing.cpu_count()
-        
-        # Apply optimized performance settings
-        conn.execute("SET enable_object_cache = true;")
-        conn.execute("SET memory_limit = '8GB';")  # Increased memory limit
-        conn.execute(f"SET threads = {cpu_count};")  # Use all CPU cores
-        conn.execute("SET enable_progress_bar = false;")  # Disable progress bar for better performance
-        conn.execute("SET profiling_output = 'no_output';")  # Disable profiling for better performance
-        
-        return conn
+                # duckdb.connect handles typing for its config dict
+                logger.info(f"Applying DuckDB startup config: {startup_config}")
+                self._connection = duckdb.connect(
+                    database=settings.DATABASE_PATH, 
+                    read_only=False,
+                    config=startup_config
+                )
+
+                logger.info(f"Applying DuckDB runtime settings: {runtime_config}")
+                for key, value in runtime_config.items():
+                    if value is not None:
+                        # SET command is picky about quotes for strings vs other types
+                        if isinstance(value, str):
+                            # Don't set empty strings. For `disabled_optimizers`, empty is default.
+                            if value:
+                                self._connection.execute(f"SET {key} = '{value}'")
+                        else:
+                            self._connection.execute(f"SET {key} = {str(value).lower()}")
+
+                # Load extensions if needed, e.g., arrow
+                if settings.DUCKDB_ARROW_EXTENSION_ENABLED:
+                    try:
+                        logger.info("Installing and loading DuckDB arrow extension.")
+                        self._connection.execute("INSTALL arrow")
+                        self._connection.execute("LOAD arrow")
+                        logger.info("Arrow extension loaded successfully.")
+                    except Exception as e:
+                        logger.warning(f"Could not install or load arrow extension: {e}")
 
     @asynccontextmanager
     async def acquire(self):
-        conn = None
+        if self._connection is None:
+            await self.initialize()
+            
         async with self._lock:
-            if self._pool.empty() and self._total_connections < self.max_connections:
-                conn = await self._create_connection()
-                self._total_connections += 1
-            else:
-                conn = await self._pool.get()
-        try:
-            yield conn
-        finally:
-            await self._pool.put(conn)
+            try:
+                yield self._connection
+            finally:
+                # The connection is no longer closed here.
+                # It will be closed on shutdown.
+                pass
 
     async def close(self):
-        while not self._pool.empty():
-            conn = await self._pool.get()
-            conn.close()
-        self._total_connections = 0 
+        async with self._lock:
+            if self._connection:
+                logger.info("Closing DuckDB connection.")
+                self._connection.close()
+                self._connection = None 

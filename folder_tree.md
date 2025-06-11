@@ -52,24 +52,66 @@ react-fast-V12/
 │   │       │   ├── profiling.py
 │   │       │   └── timing.py
 │   │       └── routers/
-│   │           └── data.py
+│   │           ├── data.py
+│   │           └── high_performance_data.py
 ├── data/
 │   └── data.duckdb
 ├── docs/
 │   ├── API_ENDPOINTS.md
-│   ├── development_plan.md
+│   ├── code_review_prompt.md
+│   ├── HIGH_PERFORMANCE_DATA_GUIDE.md
+│   ├── RUNME.md
 │   ├── folder_tree.md
 │   ├── README.md
 │   ├── sprint_1.md
 │   └── sprint_2.md
 ├── external/
+│   ├── mocked_response_100K-4.json
+│   ├── mocked_response_10K.json
+│   ├── mocked_response_duplicates.json
+│   └── mocked_response.json
 ├── frontend/
+│   ├── app.py
 ├── logs/
+│   └── app.log
 ├── tests/
+│   ├── complete_tests.py
+│   ├── conftest.py
+│   ├── deduplicate_json.py
+│   ├── duplicate_json.py
+│   ├── load_data.py
+│   ├── main.py
+│   ├── performance_tests.py
+│   ├── pyproject.toml
+│   ├── pytest.ini
+│   ├── requirements.in
+│   ├── requirements.lock
+│   ├── test_arrow_extension.py
+│   ├── test_composite_keys.py
+│   ├── test_high_performance.py
+│   ├── test_performance_monitoring.py
+│   ├── test_query_benchmarks.py
+│   ├── test_runner.py
+│   ├── test_simple_large_pages.py
+│   ├── test_simple_streaming.py
+│   ├── test_streaming_performance.py
+│   ├── test_streaming_simple.py
+│   ├── trequirements.txt
+│   ├── verify_duplicates.py
+│   ├── test_config/
+│   ├── test_domain/
+│   └── test_infrastructure/
+├── app.bat
 ├── complete_tests.py
+├── io_bench.py
+├── main.py
 ├── performance_tests.py
-├── requirements.txt
+├── pyarrow_docs.md
+├── pyproject.toml
+├── README.md
 ├── requirements.in
 ├── requirements.lock
-└── uv.lock
+├── requirements.txt
+├── uv.lock
+└── no_output
 ```
