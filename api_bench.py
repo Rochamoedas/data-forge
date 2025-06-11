@@ -18,7 +18,7 @@ from app.config.api_limits import api_limits
 
 # --- CONFIGURABLE PARAMETERS ---
 BASE_URL = "http://localhost:8080/api/v1"  # Your API base URL
-TEST_DATA_SIZE = 10000  # Number of test records to generate
+TEST_DATA_SIZE = api_limits.BENCHMARK_TEST_SIZE  # Number of test records to generate
 SCHEMA_NAME = "well_production"  # Schema to test with
 
 # --- Test Data Generation ---

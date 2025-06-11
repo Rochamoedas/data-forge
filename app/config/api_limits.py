@@ -28,7 +28,7 @@ class APILimits(BaseModel):
     PERFORMANCE_TEST_MAX_RECORDS: int = 500000  # Increased for testing
     
     # Benchmark settings
-    BENCHMARK_TEST_SIZE: int = 100_000  # Default test size for benchmarks
+    BENCHMARK_TEST_SIZE: int = 1_000_000  # Default test size for benchmarks
     BENCHMARK_IO_TEST_SIZE: int = 900_000  # Test size for IO benchmarks
     BENCHMARK_TIMEOUT: int = 300  # 5 minutes timeout for individual benchmark operations
     
