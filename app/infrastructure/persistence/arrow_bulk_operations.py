@@ -44,12 +44,14 @@ class ArrowBulkOperations(IArrowBulkOperations):
         await self.bulk_insert_from_arrow_table(schema, arrow_table)
     
     async def bulk_insert_from_arrow_table(self, schema: Schema, arrow_table: pa.Table) -> None:
-        """Insert data from Arrow Table directly - maximum performance"""
+        """Insert data from Arrow Table directly, ignoring duplicates."""
         async with self.connection_pool.acquire() as conn:
             conn.begin()
             try:
                 conn.register("arrow_table", arrow_table)
-                conn.execute(f'INSERT INTO "{schema.table_name}" SELECT * FROM arrow_table')
+                # Use INSERT OR IGNORE to skip duplicates without raising an error.
+                # This is a high-performance way to handle conflicts in DuckDB.
+                conn.execute(f'INSERT OR IGNORE INTO "{schema.table_name}" SELECT * FROM arrow_table')
                 conn.commit()
             except Exception as e:
                 conn.rollback()

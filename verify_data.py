@@ -25,26 +25,21 @@ def verify_data():
             print("Table is empty. No data to display.")
             return
 
-        # Define offsets
-        first_offset = 0
-        third_offset = total_rows // 3
-        last_offset = total_rows - 1
-
-        print("\n--- Fetching first, one-third, and last rows ordered by 'field_code' ---")
+        print("\n--- Fetching rows with field_code 0, 3, and max value ---")
 
         # Queries
-        query_first = f"SELECT * FROM {TABLE_NAME} ORDER BY field_code LIMIT 1 OFFSET {first_offset}"
-        query_third = f"SELECT * FROM {TABLE_NAME} ORDER BY field_code LIMIT 1 OFFSET {third_offset}"
-        query_last = f"SELECT * FROM {TABLE_NAME} ORDER BY field_code LIMIT 1 OFFSET {last_offset}"
+        query_fc_0 = f"SELECT * FROM {TABLE_NAME} WHERE field_code = 0 LIMIT 1"
+        query_fc_3 = f"SELECT * FROM {TABLE_NAME} WHERE field_code = 3 LIMIT 1"
+        query_fc_max = f"SELECT * FROM {TABLE_NAME} ORDER BY field_code DESC LIMIT 1"
         
         # Fetch data as pandas DataFrames
-        df_first = con.execute(query_first).fetchdf()
-        df_third = con.execute(query_third).fetchdf()
-        df_last = con.execute(query_last).fetchdf()
+        df_fc_0 = con.execute(query_fc_0).fetchdf()
+        df_fc_3 = con.execute(query_fc_3).fetchdf()
+        df_fc_max = con.execute(query_fc_max).fetchdf()
 
         # Combine and print
-        result_df = pd.concat([df_first, df_third, df_last]).reset_index(drop=True)
-        result_df.index = ['First Row', 'One-Third Row', 'Last Row']
+        result_df = pd.concat([df_fc_0, df_fc_3, df_fc_max]).reset_index(drop=True)
+        result_df.index = ['Field Code 0', 'Field Code 3', 'Max Field Code']
         
         print("\n--- Query Results ---")
         print(result_df)
