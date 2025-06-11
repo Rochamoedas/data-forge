@@ -1,9 +1,8 @@
-# app/infrastructure/persistence/repositories/file_schema_repository.py
 from typing import Optional, List, Dict
 from app.domain.entities.schema import Schema
-from app.domain.repositories.schema_repository import ISchemaRepository
+from app.domain.repositories.interfaces import ISchemaRepository
 from app.infrastructure.metadata.schemas_description import SCHEMAS_METADATA
-from app.infrastructure.persistence.duckdb.schema_manager import DuckDBSchemaManager
+from app.infrastructure.persistence.duckdb_schema_manager import DuckDBSchemaManager
 from app.config.logging_config import logger
 
 class FileSchemaRepository(ISchemaRepository):
@@ -27,4 +26,4 @@ class FileSchemaRepository(ISchemaRepository):
         return self._schemas.get(name)
 
     async def get_all_schemas(self) -> List[Schema]:
-        return list(self._schemas.values())
+        return list(self._schemas.values()) 

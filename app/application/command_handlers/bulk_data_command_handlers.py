@@ -15,8 +15,7 @@ from app.application.commands.bulk_data_commands import (
     BulkReadToDataFrameCommand
 )
 from app.domain.entities.schema import Schema
-from app.domain.repositories.schema_repository import ISchemaRepository
-from app.infrastructure.persistence.arrow_bulk_operations import IArrowBulkOperations
+from app.domain.repositories.interfaces import ISchemaRepository, IArrowBulkOperations
 from app.domain.exceptions import SchemaNotFoundException
 from app.config.logging_config import logger
 

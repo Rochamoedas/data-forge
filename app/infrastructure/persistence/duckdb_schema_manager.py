@@ -1,4 +1,3 @@
-# app/infrastructure/persistence/duckdb/schema_manager.py
 import duckdb
 from app.domain.entities.schema import Schema
 from app.infrastructure.persistence.duckdb.connection_pool import AsyncDuckDBPool
@@ -63,4 +62,4 @@ class DuckDBSchemaManager:
 
     async def ensure_table_exists(self, schema: Schema):
         """Legacy method for backward compatibility."""
-        await self.ensure_tables_exist([schema])
+        await self.ensure_tables_exist([schema]) 

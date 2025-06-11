@@ -6,14 +6,6 @@ After reviewing the current codebase and the existing `simplify.md` proposal, th
 
 I want to keep the following endpoints:
 
-## Architecture Overview
-
-We implemented a complete **ultra-fast Arrow-based data pipeline** following Hexagonal Architecture, DDD, CQRS, SOLID, DRY, and Schema Driven Design principles. The system centers around two main API endpoints: `POST /api/v1/arrow-performance/bulk-insert/{schema_name}` and `GET /api/v1/arrow-performance/bulk-read/{schema_name}` that work with **any schema** defined in `schemas_description.py`. The architecture includes **ArrowBulkOperations** as the core infrastructure service implementing **IArrowBulkOperations** interface, **BulkDataCommandHandler** for CQRS command processing, **CreateUltraFastBulkDataUseCase** as the application orchestrator, **PerformanceMonitor** domain service for optional metrics tracking, and CQRS commands like **BulkInsertFromDictListCommand**, **BulkReadToArrowCommand**, and **BulkReadToDataFrameCommand**. The **Container** class wires all dependencies through dependency injection, while the **arrow_performance_data.py** router provides clean API controllers that delegate to use cases without business logic.
-
-## Read/Write Operations & Modularity
-
-The **write operations** flow from API controller through **execute_from_dict_list()** in the use case, creating a **BulkInsertFromDictListCommand** processed by **handle_bulk_insert_from_dict_list()** in the command handler, which converts data to pandas DataFrame via **pd.DataFrame(command.data)**, then calls **bulk_insert_from_dataframe()** in ArrowBulkOperations that converts to Arrow Table with **pa.Table.from_pandas()** and executes ultra-fast **conn.register("arrow_table", arrow_table)** followed by **INSERT INTO SELECT** for zero-copy performance. The **read operations** use **read_to_dataframe()** or **read_to_arrow_table()** methods that create **BulkReadToDataFrameCommand** or **BulkReadToArrowCommand**, handled by **handle_bulk_read_to_dataframe()** or **handle_bulk_read_to_arrow()** respectively, executing **conn.execute(f'SELECT * FROM "{schema.table_name}"').fetchdf()** or **result.fetch_arrow_table()** for maximum performance. The system achieves complete **schema-driven modularity** because all operations dynamically resolve schemas via **schema_repository.get_schema_by_name(schema_name)**, use **schema.table_name** and **schema.properties** for all database operations, require **zero code changes** when adding new schemas to `schemas_description.py`, and provide **10-100x performance improvements** through Arrow's columnar memory format and SIMD optimizations combined with DuckDB's native Arrow integration. 
-
 # Ultra-fast bulk insert
 POST /api/v1/arrow-performance/bulk-insert/{schema_name}
 {
