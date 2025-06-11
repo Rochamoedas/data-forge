@@ -7,6 +7,7 @@ from app.config.logging_config import logger
 class AsyncDuckDBPool:
     _connection = None
     _lock = asyncio.Lock()
+    _initialized = False
 
     def __init__(self, **kwargs):
         # The connection parameters are now managed by this pool.
@@ -15,7 +16,7 @@ class AsyncDuckDBPool:
     async def initialize(self):
         # This will now create the connection.
         async with self._lock:
-            if self._connection is None:
+            if not self._initialized:
                 logger.info(f"Initializing DuckDB connection to database: {settings.DATABASE_PATH}")
                 
                 full_config = settings.DUCKDB_PERFORMANCE_CONFIG
@@ -54,16 +55,30 @@ class AsyncDuckDBPool:
                 # Load extensions if needed, e.g., arrow
                 if settings.DUCKDB_ARROW_EXTENSION_ENABLED:
                     try:
-                        logger.info("Installing and loading DuckDB arrow extension.")
-                        self._connection.execute("INSTALL arrow")
-                        self._connection.execute("LOAD arrow")
-                        logger.info("Arrow extension loaded successfully.")
+                        logger.info("Checking DuckDB arrow extension status.")
+                        # Check if arrow extension is already installed
+                        result = self._connection.execute("""
+                            SELECT installed 
+                            FROM duckdb_extensions() 
+                            WHERE extension_name='arrow' 
+                            OR list_contains(aliases, 'arrow')
+                        """).fetchone()
+                        
+                        if not result or not result[0]:
+                            logger.info("Installing and loading DuckDB arrow extension.")
+                            self._connection.execute("INSTALL arrow FROM community")
+                            self._connection.execute("LOAD arrow")
+                            logger.info("Arrow extension loaded successfully.")
+                        else:
+                            logger.info("Arrow extension already installed and loaded.")
                     except Exception as e:
                         logger.warning(f"Could not install or load arrow extension: {e}")
 
+                self._initialized = True
+
     @asynccontextmanager
     async def acquire(self):
-        if self._connection is None:
+        if not self._initialized:
             await self.initialize()
             
         async with self._lock:
@@ -79,4 +94,5 @@ class AsyncDuckDBPool:
             if self._connection:
                 logger.info("Closing DuckDB connection.")
                 self._connection.close()
-                self._connection = None 
+                self._connection = None
+                self._initialized = False 

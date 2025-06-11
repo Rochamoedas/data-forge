@@ -10,8 +10,8 @@ from app.infrastructure.web.routers import arrow_performance_data
 from app.container.container import container
 from app.config.logging_config import logger
 
-# Initialize DataService
-data_service = DataService()
+# Initialize DataService with container's connection pool
+data_service = DataService(connection_pool=container.connection_pool)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown complete.")
 
 app = FastAPI(
-    title="Data Forge",
+    title=settings.PROJECT_NAME,
     version="1.0.0",
     lifespan=lifespan
 )
@@ -100,4 +100,4 @@ def read_root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.HOST, port=settings.PORT)

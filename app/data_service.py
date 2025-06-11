@@ -14,14 +14,12 @@ class DataService:
     Combines Polars + PyArrow + DuckDB for all operations
     """
     
-    def __init__(self):
-        self.connection_pool = AsyncDuckDBPool()
+    def __init__(self, connection_pool: AsyncDuckDBPool):
+        self.connection_pool = connection_pool
         self.schemas: Dict[str, Schema] = {}
 
     async def initialize(self):
-        """Initializes the service, including the connection pool and schemas."""
-        await self.connection_pool.initialize()
-        
+        """Initializes the service, including schemas."""
         # Load schemas from metadata
         schemas_list = []
         for schema_data in SCHEMAS_METADATA:
@@ -35,8 +33,7 @@ class DataService:
         logger.info("DataService initialized.")
 
     async def close(self):
-        """Closes the connection pool."""
-        await self.connection_pool.close()
+        """Closes the service."""
         logger.info("DataService closed.")
 
     async def _ensure_tables_exist(self, schemas: List[Schema]):

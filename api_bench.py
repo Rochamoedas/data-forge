@@ -13,27 +13,30 @@ import pyarrow as pa
 import pyarrow.ipc as ipc
 import uuid
 
+from app.config.settings import settings
+from app.config.api_limits import api_limits
+
 # --- CONFIGURABLE PARAMETERS ---
 BASE_URL = "http://localhost:8080/api/v1"  # Your API base URL
-TEST_DATA_SIZE = 100_000  # Number of test records to generate
+TEST_DATA_SIZE = 10000  # Number of test records to generate
 SCHEMA_NAME = "well_production"  # Schema to test with
 
 # --- Test Data Generation ---
-def generate_test_data(size: int) -> List[Dict[str, Any]]:
-    """Generate test data with unique composite primary keys."""
-    data = []
+def generate_test_data(size: int = api_limits.BENCHMARK_TEST_SIZE) -> pa.Table:
+    """Generate test data for benchmarking."""
     base_date = datetime(2024, 1, 1)
+    data = []
     
     for i in range(size):
         prod_date = base_date + timedelta(seconds=i)
-        record = {
+        data.append({
             "id": str(uuid.uuid4()),
-            "created_at": datetime.now(),
+            "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00"),
             "version": 1,
             "field_code": i % 1000,
-            "_field_name": f"Field_{i % 1000}",
+            "field_name": f"Field_{i % 1000}",
             "well_code": i % 100,
-            "_well_reference": f"WELL_REF_{i % 100:03d}",
+            "well_reference": f"WELL_REF_{i % 100:03d}",
             "well_name": f"Well_{i % 100}",
             "production_period": prod_date.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
             "days_on_production": 30,
@@ -44,14 +47,14 @@ def generate_test_data(size: int) -> List[Dict[str, Any]]:
             "data_source": "performance_test",
             "source_data": json.dumps({"test": f"data_{i}"}),
             "partition_0": f"partition_{i % 10}"
-        }
-        data.append(record)
-    return data
+        })
+    
+    return pa.Table.from_pylist(data)
 
 # --- Resource Monitoring ---
-def get_process_metrics():
+def get_process_metrics() -> Dict[str, float]:
     """Get current process CPU and memory usage."""
-    process = psutil.Process(os.getpid())
+    process = psutil.Process()
     return {
         "cpu_percent": process.cpu_percent(),
         "memory_mb": process.memory_info().rss / (1024 * 1024)
@@ -73,10 +76,10 @@ async def benchmark_bulk_insert(session: aiohttp.ClientSession, data: pa.Table) 
     headers = {'Content-Type': 'application/vnd.apache.arrow.stream'}
     try:
         async with session.post(
-            f"{BASE_URL}/arrow/bulk-insert/{SCHEMA_NAME}",
+            f"{settings.API_BASE_URL}/arrow/bulk-insert/well_production",
             data=body,
             headers=headers,
-            timeout=aiohttp.ClientTimeout(total=300)
+            timeout=aiohttp.ClientTimeout(total=api_limits.BENCHMARK_TIMEOUT)
         ) as response:
             response.raise_for_status()
             response_json = await response.json()
@@ -110,8 +113,8 @@ async def benchmark_bulk_read(session: aiohttp.ClientSession) -> Dict[str, Any]:
     records_retrieved = 0
     try:
         async with session.get(
-            f"{BASE_URL}/arrow/bulk-read/{SCHEMA_NAME}",
-            timeout=aiohttp.ClientTimeout(total=300)
+            f"{settings.API_BASE_URL}/arrow/bulk-read/well_production",
+            timeout=aiohttp.ClientTimeout(total=api_limits.BENCHMARK_TIMEOUT)
         ) as response:
             response.raise_for_status()
             body = await response.read()
@@ -177,15 +180,15 @@ async def run_benchmarks():
     
     # Generate test data
     print(f"Generating {TEST_DATA_SIZE} test records...")
-    test_data_list = generate_test_data(TEST_DATA_SIZE)
-    test_data_arrow = pa.Table.from_pylist(test_data_list)
+    test_data = generate_test_data()
+    print(f"Generated {len(test_data)} test records.")
 
     # Configure client session with increased timeouts
-    timeout = aiohttp.ClientTimeout(total=600)  # 10 minute timeout
+    timeout = aiohttp.ClientTimeout(total=api_limits.PERFORMANCE_TEST_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         # Test bulk insert
         try:
-            insert_result = await benchmark_bulk_insert(session, test_data_arrow)
+            insert_result = await benchmark_bulk_insert(session, test_data)
             all_results.append(insert_result)
         except Exception as e:
             print(f"Benchmark for bulk insert failed: {e}")

@@ -7,6 +7,15 @@ class Settings:
     PROJECT_NAME: str = "Data Forge"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     DATABASE_PATH: str = os.getenv("DATABASE_PATH", "./data/data.duckdb")
+    
+    # Server settings
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8080"))
+    API_BASE_URL: str = os.getenv("API_BASE_URL", f"http://localhost:{PORT}/api/v1")
+    
+    # Display settings
+    DISPLAY_MAX_ROWS: int = int(os.getenv("DISPLAY_MAX_ROWS", "500"))
+    DISPLAY_WIDTH: int = int(os.getenv("DISPLAY_WIDTH", "200"))
 
     @property
     def DUCKDB_PERFORMANCE_CONFIG(self):
@@ -20,17 +29,18 @@ class Settings:
         os.makedirs(temp_dir, exist_ok=True)
         
         return {
-            'memory_limit': '8GB',           # Optimized for local use
+            'memory_limit': '12GB',           # Optimized for local use
             'threads': 4,                    # Fixed number for stability
             'enable_object_cache': True,
             'temp_directory': temp_dir,      # Platform-appropriate temp storage
             'allow_unsigned_extensions': True,  # Allow local extensions
-            'autoinstall_known_extensions': False,  # Disable auto-download
-            'autoload_known_extensions': False,     # Disable auto-load
+            'autoinstall_known_extensions': True,  # Enable auto-download
+            'autoload_known_extensions': True,     # Enable auto-load
             'disabled_optimizers': '',       # Enable all optimizers
         }
 
     # High-performance settings
     DUCKDB_ARROW_EXTENSION_ENABLED: bool = os.getenv("DUCKDB_ARROW_EXTENSION_ENABLED", "True").lower() == "true"
 
+# Global instance
 settings = Settings()
