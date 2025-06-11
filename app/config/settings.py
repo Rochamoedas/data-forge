@@ -30,4 +30,7 @@ class Settings:
             'disabled_optimizers': '',       # Enable all optimizers
         }
 
+    # High-performance settings
+    DUCKDB_ARROW_EXTENSION_ENABLED: bool = os.getenv("DUCKDB_ARROW_EXTENSION_ENABLED", "True").lower() == "true"
+
 settings = Settings()

@@ -1,0 +1,109 @@
+"""
+Arrow-Based Data API Endpoints
+
+Clean API layer following Hexagonal Architecture:
+- Controllers delegate to use cases
+- No business logic in controllers
+- Clean separation of concerns
+"""
+
+from fastapi import APIRouter, HTTPException, status, Request
+from typing import Dict, Any
+import pyarrow as pa
+import pyarrow.ipc as ipc
+
+from app.container.container import container
+from app.domain.exceptions import SchemaNotFoundException
+from app.config.logging_config import logger
+from app.infrastructure.web.arrow import ArrowResponse
+
+
+router = APIRouter()
+
+
+@router.post("/arrow/bulk-insert/{schema_name}", tags=["Arrow"])
+async def ultra_fast_bulk_insert(
+    schema_name: str,
+    request: Request
+) -> Dict[str, Any]:
+    """
+    Bulk insert using Arrow IPC stream format.
+    
+    Delegates to use case which handles:
+    - Schema validation
+    - Data conversion to optimal format
+    - Arrow → DuckDB insertion
+    """
+    try:
+        arrow_bytes = await request.body()
+        if not arrow_bytes:
+            raise HTTPException(status_code=400, detail="No Arrow data provided in request body")
+
+        with ipc.open_stream(arrow_bytes) as reader:
+            arrow_table = reader.read_all()
+
+        await container.create_ultra_fast_bulk_data_use_case.execute_from_arrow_table(
+            schema_name=schema_name,
+            arrow_table=arrow_table
+        )
+
+        return {
+            "success": True,
+            "message": f"Bulk insert completed for {schema_name}",
+            "records_processed": arrow_table.num_rows,
+            "optimization": "arrow_ipc_stream"
+        }
+
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[ARROW-API] Bulk insert failed: {e}")
+        raise HTTPException(status_code=500, detail="Bulk insert operation failed")
+
+
+@router.get("/arrow/bulk-read/{schema_name}", response_class=ArrowResponse, tags=["Arrow"])
+async def ultra_fast_bulk_read(
+    schema_name: str
+) -> ArrowResponse:
+    """
+    Bulk read using Arrow IPC stream format.
+    """
+    try:
+        arrow_table = await container.create_ultra_fast_bulk_data_use_case.read_to_arrow_table(
+            schema_name=schema_name
+        )
+        return ArrowResponse(arrow_table)
+    except SchemaNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[ARROW-API] Bulk read failed: {e}")
+        raise HTTPException(status_code=500, detail="Bulk read operation failed")
+
+
+@router.get("/arrow/health-check", tags=["Arrow"])
+async def arrow_health_check() -> Dict[str, Any]:
+    """
+    Health check for Arrow-based operations
+    """
+    try:
+        import pyarrow as pa
+        import pandas as pd
+        
+        # Quick functionality test
+        test_data = [{"id": 1, "test": "value"}]
+        df = pd.DataFrame(test_data)
+        arrow_table = pa.Table.from_pandas(df)
+        
+        return {
+            "success": True,
+            "message": "Arrow operations are healthy",
+            "arrow_version": pa.__version__,
+            "pandas_version": pd.__version__,
+            "functionality_test": "passed"
+        }
+        
+    except Exception as e:
+        logger.error(f"[ARROW-API] Health check failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Arrow health check failed: {str(e)}")
