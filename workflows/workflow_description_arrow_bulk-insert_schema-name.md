@@ -156,8 +156,8 @@ INSERT OR IGNORE INTO "schema_table_name" SELECT * FROM arrow_table
 ```json
 {
   "success": true,
-  "message": "Bulk insert completed for well_production",
-  "records_processed": 100000,
+  "message": "Bulk insert completed for {schema_name}",
+  "records_processed": "{number_of_records}",
   "optimization": "arrow_ipc_stream"
 }
 ```

@@ -1,12 +1,9 @@
-"""
-Arrow-Based Bulk Operations
-"""
-
 import duckdb
 import pandas as pd
 import pyarrow as pa
 from typing import List, Dict, Any
 from pathlib import Path
+import logging
 
 from app.domain.entities.schema import Schema
 from app.infrastructure.persistence.duckdb.connection_pool import AsyncDuckDBPool
@@ -49,13 +46,12 @@ class ArrowBulkOperations(IArrowBulkOperations):
             conn.begin()
             try:
                 conn.register("arrow_table", arrow_table)
-                # Use INSERT OR IGNORE to skip duplicates without raising an error.
-                # This is a high-performance way to handle conflicts in DuckDB.
                 conn.execute(f'INSERT OR IGNORE INTO "{schema.table_name}" SELECT * FROM arrow_table')
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                raise e
+                logging.error(f"Bulk insert failed for table {schema.table_name}: {e}")
+                raise
     
     async def bulk_read_to_arrow_table(self, schema: Schema) -> pa.Table:
         """Read data as Arrow Table - zero-copy when possible"""
@@ -66,4 +62,4 @@ class ArrowBulkOperations(IArrowBulkOperations):
     async def bulk_read_to_dataframe(self, schema: Schema) -> pd.DataFrame:
         """Read data as pandas DataFrame"""
         async with self.connection_pool.acquire() as conn:
-            return conn.execute(f'SELECT * FROM "{schema.table_name}"').fetchdf() 
+            return conn.execute(f'SELECT * FROM "{schema.table_name}"').fetchdf()

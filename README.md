@@ -62,14 +62,8 @@ The project architecture is built around the following principles and patterns:
     * The DuckDB `SchemaManager` is injected and can be used to **ensure tables corresponding to defined schemas exist in DuckDB** during startup or on the first write operation.
 
 2.  **Data Request (e.g., Create a Record):**
-    * An HTTP POST request is made to the FastAPI endpoint `/api/{schema_name}/data`.
-    * FastAPI validates the request payload using a **Pydantic DTO** (`CreateDataRecordRequest`).
-    * A **FastAPI dependency** (`common.py`) injects the `create_data_record` use case.
-    * The use case requests the schema definition from `ISchemaRepository` (implemented by `FileSchemaRepository`) using the request's `schema_name`.
-    * With the `Schema` in hand, the use case invokes `IDataRepository` (implemented by `DuckDBDataRepository`) to store the new data record.
-    * `DuckDBDataRepository` uses the schema to dynamically build the SQL INSERT query and persist the data in DuckDB.
-    * The use case returns a `DataRecord` (domain entity), which is mapped to a `DataRecordResponse` (DTO) and returned to the client by FastAPI.
-	* Focus on performance and reliability.
+
+3.  **Data Insert**
 
 ---
 

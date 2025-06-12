@@ -65,9 +65,11 @@ async def ultra_fast_bulk_insert(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except ipc.ArrowInvalid as e:  # Specific exception for Arrow IPC errors
+    except pa.ArrowInvalid as e:  # Specific exception for Arrow IPC errors
         logger.error(f"[ARROW-API] Arrow IPC deserialization failed: {e}")
-        raise HTTPException(status_code=400, detail="Invalid Arrow IPC data")
+        raise HTTPException(status_code=400, detail=f"Invalid Arrow IPC data: {e}")
+    except HTTPException as e:
+        raise
     except Exception as e:
         logger.error(f"[ARROW-API] Bulk insert failed: {e}")
         raise HTTPException(status_code=500, detail="Bulk insert operation failed")
@@ -90,30 +92,3 @@ async def ultra_fast_bulk_read(
     except Exception as e:
         logger.error(f"[ARROW-API] Bulk read failed: {e}")
         raise HTTPException(status_code=500, detail="Bulk read operation failed")
-
-
-@router.get("/arrow/health-check", tags=["Arrow"])
-async def arrow_health_check() -> Dict[str, Any]:
-    """
-    Health check for Arrow-based operations
-    """
-    try:
-        import pyarrow as pa
-        import pandas as pd
-        
-        # Quick functionality test
-        test_data = [{"id": 1, "test": "value"}]
-        df = pd.DataFrame(test_data)
-        arrow_table = pa.Table.from_pandas(df)
-        
-        return {
-            "success": True,
-            "message": "Arrow operations are healthy",
-            "arrow_version": pa.__version__,
-            "pandas_version": pd.__version__,
-            "functionality_test": "passed"
-        }
-        
-    except Exception as e:
-        logger.error(f"[ARROW-API] Health check failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Arrow health check failed: {str(e)}")
