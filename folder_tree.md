@@ -3,14 +3,8 @@ react-fast-V12\
     ├── application
     │   ├── command_handlers
     │   │   └── bulk_data_command_handlers.py
-    │   ├── commands
-    │   │   └── bulk_data_commands.py
-    │   ├── use_cases
-    │   │   ├── create_data_record.py
-    │   │   ├── create_ultra_fast_bulk_data.py
-    │   │   ├── get_data_record.py
-    │   │   └── query_data_records.py
-    │   └── 
+    │   └── commands
+    │       └── bulk_data_commands.py
     ├── config
     │   ├── api_limits.py
     │   ├── logging_config.py
