@@ -34,10 +34,11 @@ class BulkReadToArrowCommand:
 
 
 @dataclass(frozen=True)
-class BulkReadToDataFrameCommand:
-    """Command to read bulk data as pandas DataFrame"""
+class BulkUpdateFromArrowTableCommand:
+    """Command to update bulk data from Arrow Table"""
     schema_name: str
+    arrow_table: pa.Table
     
     def __post_init__(self):
         if not self.schema_name:
-            raise ValueError("Schema name is required") 
+            raise ValueError("Schema name is required")

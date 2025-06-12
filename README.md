@@ -1,4 +1,4 @@
-# Data Forge - Dynamic Data Platform v0.2.2
+# Data Forge - Dynamic Data Platform v0.3.3
 
 ## High-Level Project Description
 

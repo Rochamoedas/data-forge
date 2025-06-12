@@ -38,10 +38,17 @@ async def ultra_fast_bulk_insert(
         arrow_bytes = await request.body()
         if not arrow_bytes:
             raise HTTPException(status_code=400, detail="No Arrow data provided in request body")
-
+        
+        # Add logging for incoming data size and validation
+        logger.info(f"[ARROW-API] Received bulk-insert request for schema '{schema_name}' with data size: {len(arrow_bytes)} bytes")
+        
         with ipc.open_stream(arrow_bytes) as reader:
             arrow_table = reader.read_all()
-
+        
+        # Validate Arrow table before processing
+        if arrow_table is None or arrow_table.num_rows == 0:
+            raise HTTPException(status_code=400, detail="Invalid or empty Arrow table provided")
+        
         await container.create_ultra_fast_bulk_data_use_case.execute_from_arrow_table(
             schema_name=schema_name,
             arrow_table=arrow_table
@@ -58,6 +65,9 @@ async def ultra_fast_bulk_insert(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ipc.ArrowInvalid as e:  # Specific exception for Arrow IPC errors
+        logger.error(f"[ARROW-API] Arrow IPC deserialization failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid Arrow IPC data")
     except Exception as e:
         logger.error(f"[ARROW-API] Bulk insert failed: {e}")
         raise HTTPException(status_code=500, detail="Bulk insert operation failed")

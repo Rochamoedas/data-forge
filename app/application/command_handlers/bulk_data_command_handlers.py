@@ -3,10 +3,10 @@ CQRS Command Handlers for Bulk Data Operations
 """
 
 import pyarrow as pa
-from typing import Optional
 
 from app.application.commands.bulk_data_commands import (
     BulkInsertFromArrowTableCommand,
+    BulkUpdateFromArrowTableCommand,
     BulkReadToArrowCommand
 )
 from app.domain.entities.schema import Schema
@@ -53,4 +53,4 @@ class BulkDataCommandHandler:
         schema = await self.schema_repository.get_schema_by_name(schema_name)
         if not schema:
             raise SchemaNotFoundException(f"Schema '{schema_name}' not found")
-        return schema 
+        return schema

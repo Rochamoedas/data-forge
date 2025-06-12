@@ -15,7 +15,8 @@ import uuid
 
 # --- CONFIGURABLE PARAMETERS ---
 BASE_URL = "http://localhost:8080/api/v1"  # Your API base URL
-TEST_DATA_SIZE = 100_000  # Number of test records to generate
+# Number of test records to generate
+TEST_DATA_SIZE = 900_000
 SCHEMA_NAME = "well_production"  # Schema to test with
 
 # --- Test Data Generation ---
@@ -207,6 +208,6 @@ async def run_benchmarks():
 if __name__ == "__main__":
     print("Starting API Performance Benchmark...")
     print(f"Base URL: {BASE_URL}")
-    print(f"Test Data Size: {TEST_DATA_SIZE} records")
+    print(f"Test Data Size: records")
     
     asyncio.run(run_benchmarks())

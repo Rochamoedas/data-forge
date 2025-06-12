@@ -47,6 +47,7 @@ ENV/
 env.bak/
 venv.bak/
 frontend/fenv
+fenv/
 
 # Test environment files
 test_venv/
