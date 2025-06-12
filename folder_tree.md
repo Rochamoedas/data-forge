@@ -2,11 +2,19 @@
 
 ```
 react-fast-V12/
+├── .cursorignore
 ├── .env
+├── .git/
 ├── .gitignore
+├── .venv/
+├── .vscode/
 ├── app/
 │   ├── main.py
 │   ├── application/
+│   │   ├── command_handlers/
+│   │   │   └── bulk_data_command_handlers.py
+│   │   ├── commands/
+│   │   │   └── bulk_data_commands.py
 │   │   ├── dto/
 │   │   │   ├── create_data_dto.py
 │   │   │   ├── data_dto.py
@@ -16,6 +24,7 @@ react-fast-V12/
 │   │   └── use_cases/
 │   │       ├── create_bulk_data_records.py
 │   │       ├── create_data_record.py
+│   │       ├── create_ultra_fast_bulk_data.py
 │   │       ├── get_data_record.py
 │   │       └── query_data_records.py
 │   ├── config/
@@ -25,10 +34,13 @@ react-fast-V12/
 │   ├── container/
 │   │   └── container.py
 │   ├── domain/
+│   │   ├── exceptions.py
 │   │   ├── entities/
 │   │   │   ├── data_record.py
 │   │   │   └── schema.py
-│   │   ├── exceptions.py
+│   │   ├── interfaces/
+│   │   │   └── query_builder.py
+│   │   ├── models/
 │   │   ├── repositories/
 │   │   │   ├── data_repository.py
 │   │   │   └── schema_repository.py
@@ -38,80 +50,64 @@ react-fast-V12/
 │   │   ├── metadata/
 │   │   │   └── schemas_description.py
 │   │   ├── persistence/
+│   │   │   ├── arrow_bulk_operations.py
+│   │   │   ├── high_performance_data_processor.py
 │   │   │   ├── duckdb/
 │   │   │   │   ├── connection_pool.py
 │   │   │   │   ├── query_builder.py
 │   │   │   │   └── schema_manager.py
-│   │   │   ├── mappers/
 │   │   │   └── repositories/
 │   │   │       ├── duckdb_data_repository.py
 │   │   │       └── file_schema_repository.py
+│   │   ├── repositories/
 │   │   └── web/
+│   │       ├── arrow.py
 │   │       ├── dependencies/
 │   │       │   ├── common.py
-│   │       │   ├── profiling.py
-│   │       │   └── timing.py
+│   │       │   └── profiling.py
 │   │       └── routers/
-│   │           ├── data.py
-│   │           └── high_performance_data.py
+│   │           └── arrow_performance_data.py
+├── app.bat
+├── app2.bat
 ├── data/
 │   └── data.duckdb
 ├── docs/
-│   ├── API_ENDPOINTS.md
 │   ├── code_review_prompt.md
-│   ├── HIGH_PERFORMANCE_DATA_GUIDE.md
+│   ├── pyarrow_docs.md
 │   ├── RUNME.md
-│   ├── folder_tree.md
-│   ├── README.md
-│   ├── sprint_1.md
-│   └── sprint_2.md
+│   └── sprint_3.md
 ├── external/
+│   ├── mocked_response.json
 │   ├── mocked_response_100K-4.json
 │   ├── mocked_response_10K.json
-│   ├── mocked_response_duplicates.json
-│   └── mocked_response.json
+│   └── mocked_response_duplicates.json
+├── fenv/
+│   ├── Include/
+│   ├── Lib/
+│   │   └── site-packages/
+│   └── Scripts/
+├── folder_tree.md
 ├── frontend/
-│   ├── app.py
+│   ├── .gitkeep
+│   └── app.py
 ├── logs/
 │   └── app.log
-├── tests/
-│   ├── complete_tests.py
-│   ├── conftest.py
-│   ├── deduplicate_json.py
-│   ├── duplicate_json.py
-│   ├── load_data.py
-│   ├── main.py
-│   ├── performance_tests.py
-│   ├── pyproject.toml
-│   ├── pytest.ini
-│   ├── requirements.in
-│   ├── requirements.lock
-│   ├── test_arrow_extension.py
-│   ├── test_composite_keys.py
-│   ├── test_high_performance.py
-│   ├── test_performance_monitoring.py
-│   ├── test_query_benchmarks.py
-│   ├── test_runner.py
-│   ├── test_simple_large_pages.py
-│   ├── test_simple_streaming.py
-│   ├── test_streaming_performance.py
-│   ├── test_streaming_simple.py
-│   ├── trequirements.txt
-│   ├── verify_duplicates.py
-│   ├── test_config/
-│   ├── test_domain/
-│   └── test_infrastructure/
-├── app.bat
-├── complete_tests.py
-├── io_bench.py
 ├── main.py
-├── performance_tests.py
-├── pyarrow_docs.md
 ├── pyproject.toml
 ├── README.md
 ├── requirements.in
 ├── requirements.lock
 ├── requirements.txt
+├── tests/
+│   ├── api_bench.py
+│   ├── deduplicate_json.py
+│   ├── duplicate_json.py
+│   ├── io_bench_profiling.py
+│   ├── io_bench_standard.py
+│   ├── io_bench.py
+│   ├── load_data.py
+│   ├── verify_data.py
+│   └── verify_duplicates.py
 ├── uv.lock
-└── no_output
+└── workflows/
 ```
