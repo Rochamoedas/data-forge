@@ -64,3 +64,13 @@ class DuckDBSchemaManager:
     async def ensure_table_exists(self, schema: Schema):
         """Legacy method for backward compatibility."""
         await self.ensure_tables_exist([schema])
+
+    async def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists in the database."""
+        async with self.connection_pool.acquire() as conn:
+            try:
+                result = conn.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '{table_name}'").fetchone()
+                return result[0] > 0
+            except Exception as e:
+                logger.error(f"Error checking if table exists: {e}")
+                return False

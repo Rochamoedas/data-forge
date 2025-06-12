@@ -1,95 +1,63 @@
-import sys
-import os
 import pytest
-import tempfile
-from unittest.mock import Mock
+from fastapi.testclient import TestClient
+from app.main import app
+import pyarrow as pa
+import pandas as pd
+import asyncio
+import factory
+from app.domain.entities.schema import Schema, SchemaProperty
+import os
+import json
 
-# Add the project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.domain.entities.schema import Schema, SchemaProperty
-    FASTAPI_AVAILABLE = True
-except ImportError:
-    FASTAPI_AVAILABLE = False
-    TestClient = None
-    app = None
-    Schema = None
-    SchemaProperty = None
-
-
-@pytest.fixture
+@pytest.fixture(scope="session")
 def client():
-    """Create a FastAPI test client."""
-    if FASTAPI_AVAILABLE and TestClient and app:
-        return TestClient(app)
-    else:
-        pytest.skip("FastAPI or dependencies not available")
+    return TestClient(app)
 
-
-@pytest.fixture
-def sample_schema():
-    """Create a sample schema for testing."""
-    if not FASTAPI_AVAILABLE or not Schema or not SchemaProperty:
-        pytest.skip("Domain entities not available")
-    
-    return Schema(
-        name="test_schema",
-        description="Test schema for unit tests",
-        table_name="test_table",
-        properties=[
-            SchemaProperty(
-                name="id",
-                type="integer",
-                db_type="BIGINT",
-                required=True
-            ),
-            SchemaProperty(
-                name="name",
-                type="string",
-                db_type="VARCHAR",
-                required=True
-            ),
-            SchemaProperty(
-                name="value",
-                type="number",
-                db_type="DOUBLE",
-                required=False
-            )
-        ]
-    )
-
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
 
 @pytest.fixture
-def mock_schema_repository():
-    """Create a mock schema repository."""
-    return Mock()
+def sample_arrow_table():
+    df = pd.DataFrame({"id": ["a", "b"], "value": [1, 2]})
+    return pa.Table.from_pandas(df)
 
+class SchemaPropertyFactory(factory.Factory):
+    class Meta:
+        model = SchemaProperty
+    name = factory.Sequence(lambda n: f"field{n}")
+    type = "string"
+    db_type = "VARCHAR"
+    required = False
+    default = None
+    primary_key = False
+
+class SchemaFactory(factory.Factory):
+    class Meta:
+        model = Schema
+    name = factory.Sequence(lambda n: f"Schema{n}")
+    description = "A test schema"
+    table_name = factory.Sequence(lambda n: f"table{n}")
+    properties = factory.List([SchemaPropertyFactory()])
+    primary_key = None
 
 @pytest.fixture
-def mock_data_repository():
-    """Create a mock data repository."""
-    return Mock()
-
+def schema_factory():
+    return SchemaFactory
 
 @pytest.fixture
-def temp_db_path():
-    """Create a temporary database file for testing."""
-    with tempfile.NamedTemporaryFile(suffix=".duckdb", delete=False) as tmp:
-        db_path = tmp.name
-    yield db_path
-    # Cleanup
-    if os.path.exists(db_path):
-        os.unlink(db_path)
+def test_data():
+    data_dir = os.path.join(os.path.dirname(__file__), "data")
+    if os.path.exists(data_dir):
+        for fname in os.listdir(data_dir):
+            if fname.endswith(".json"):
+                with open(os.path.join(data_dir, fname)) as f:
+                    yield json.load(f)
 
-
-@pytest.fixture
-def sample_data():
-    """Create sample data for testing."""
-    return {
-        "id": 1,
-        "name": "Test Record",
-        "value": 123.45
-    }
+@pytest.mark.slow
+def test_slow_example():
+    import time
+    time.sleep(0.1)
+    assert True 
